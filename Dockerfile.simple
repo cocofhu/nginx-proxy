@@ -1,20 +1,20 @@
-# 构建阶段
+# 最简单的 Alpine 构建 - 纯 Go，无 CGO
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-# 安装必要的包（不需要 gcc 和 sqlite-dev，使用纯 Go 驱动）
-RUN apk add --no-cache git make
+# 只安装基本工具
+RUN apk add --no-cache git make ca-certificates
 
 # 复制 go mod 文件
 COPY go.mod go.sum ./
 RUN go mod download
 
-# 复制源代码和 Makefile
+# 复制源代码
 COPY . .
 
-# 使用 make 构建应用（纯 Go 构建，无需 CGO）
-RUN make build-no-cgo
+# 纯 Go 构建，无需 CGO
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o bin/nginx-proxy ./cmd/server
 
 # 运行阶段 - 基于官方 nginx 镜像
 FROM nginx:alpine
@@ -46,18 +46,12 @@ RUN echo '#!/bin/sh' > /start.sh && \
     chmod +x /start.sh
 
 # 定义可挂载的卷
-VOLUME ["/app/data"]
-# 数据库文件存储
-VOLUME ["/etc/nginx/conf.d"]
-# Nginx 配置文件目录
-VOLUME ["/etc/nginx/certs"]
-# SSL 证书存储目录
-VOLUME ["/var/log/nginx"]
-# Nginx 日志目录
-VOLUME ["/app/template"]
-# 模板文件目录（可自定义模板）
-VOLUME ["/app/config.json"]
-# 应用配置文件
+VOLUME ["/app/data"]                    # 数据库文件存储
+VOLUME ["/etc/nginx/conf.d"]            # Nginx 配置文件目录
+VOLUME ["/etc/nginx/certs"]             # SSL 证书存储目录
+VOLUME ["/var/log/nginx"]               # Nginx 日志目录
+VOLUME ["/app/template"]                # 模板文件目录（可自定义模板）
+VOLUME ["/app/config.json"]             # 应用配置文件
 
 # 暴露端口
 EXPOSE 80 443 8080

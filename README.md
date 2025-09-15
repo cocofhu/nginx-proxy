@@ -40,13 +40,13 @@ go run cmd/server/main.go
 
 ### Docker 运行
 
-我们提供了两种 Docker 部署方式：
+我们提供了多种 Docker 构建方案以解决不同环境的兼容性问题：
 
-#### 方式一：单容器部署（推荐）
-基于官方 nginx 镜像，nginx-proxy 和 nginx 在同一个容器中运行：
+#### 方式一：默认构建（推荐）
+使用纯 Go SQLite 驱动，无 CGO 依赖，兼容性最佳：
 
 ```bash
-# 构建镜像
+# 构建镜像（纯 Go，无编译问题）
 docker build -t nginx-proxy .
 
 # 运行容器（包含 nginx-proxy API 和 nginx 服务）
@@ -59,17 +59,32 @@ docker run -d \
   -v $(pwd)/nginx-conf:/etc/nginx/conf.d \
   -v $(pwd)/nginx-certs:/etc/nginx/certs \
   nginx-proxy
-
-# 或使用单容器 docker-compose
-docker-compose -f docker-compose.single.yml up -d
 ```
 
-#### 方式二：多容器部署
+#### 方式二：高性能构建
+如果需要最佳 SQLite 性能，使用 Debian 基础镜像：
+
+```bash
+# 构建高性能版本（CGO + Debian）
+docker build -f Dockerfile.debian -t nginx-proxy .
+```
+
+#### 方式三：最小镜像构建
+如果需要最小的镜像大小：
+
+```bash
+# 构建最小版本
+docker build -f Dockerfile.simple -t nginx-proxy .
+```
+
+#### 方式四：多容器部署
 nginx-proxy 和 nginx 分别在不同容器中：
 
 ```bash
 docker-compose up -d
 ```
+
+> 📋 **构建选择指南**：查看 [BUILD_OPTIONS.md](BUILD_OPTIONS.md) 了解详细的构建方案对比
 
 ## API 文档
 

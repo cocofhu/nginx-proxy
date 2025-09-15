@@ -25,6 +25,11 @@ alpine-build:
 	@mkdir -p bin
 	CGO_ENABLED=1 go build -tags "sqlite_omit_load_extension" -o bin/$(APP_NAME) ./cmd/server
 
+# 纯 Go 构建（无需 CGO，推荐用于 Docker）
+build-no-cgo:
+	@mkdir -p bin
+	CGO_ENABLED=0 go build -o bin/$(APP_NAME) ./cmd/server
+
 # 运行应用
 run: check-go
 	go run ./cmd/server/main.go
@@ -58,6 +63,10 @@ docker-build:
 # Docker 构建（Debian 版本，解决 SQLite 编译问题）
 docker-build-debian:
 	docker build -f Dockerfile.debian -t $(DOCKER_IMAGE) .
+
+# Docker 构建（最简单版本，纯 Go 无 CGO）
+docker-build-simple:
+	docker build -f Dockerfile.simple -t $(DOCKER_IMAGE) .
 
 # Docker 运行
 docker-run:
@@ -127,10 +136,6 @@ setup:
 dev-setup: setup deps
 	@echo "开发环境初始化完成"
 
-# 生产环境部署
-deploy: docker-build
-	docker-compose up -d
-
 # 查看日志
 logs:
 	docker-compose logs -f nginx-proxy
@@ -155,8 +160,12 @@ release:
 	@chmod +x scripts/release.sh
 	@./scripts/release.sh $(TYPE)
 
-# 部署到环境
-deploy:
+# 生产环境部署（默认）
+deploy: docker-build
+	docker-compose up -d
+
+# 部署到指定环境
+deploy-env:
 	@chmod +x scripts/deploy.sh
 	@./scripts/deploy.sh $(ENV) $(VERSION)
 

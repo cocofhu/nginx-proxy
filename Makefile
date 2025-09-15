@@ -121,3 +121,40 @@ backup:
 # 健康检查
 health:
 	curl -f http://localhost:8080/api/rules || exit 1
+
+# CI/CD 相关命令
+# 创建发布版本
+release:
+	@chmod +x scripts/release.sh
+	@./scripts/release.sh $(TYPE)
+
+# 部署到环境
+deploy:
+	@chmod +x scripts/deploy.sh
+	@./scripts/deploy.sh $(ENV) $(VERSION)
+
+# 生产环境部署
+deploy-prod:
+	@chmod +x scripts/deploy.sh
+	@./scripts/deploy.sh production $(VERSION)
+
+# 测试环境部署
+deploy-staging:
+	@chmod +x scripts/deploy.sh
+	@./scripts/deploy.sh staging $(VERSION)
+
+# 查看当前版本
+version:
+	@echo "Current version: $(shell cat VERSION)"
+
+# 构建特定版本的镜像
+build-version:
+	@VERSION=$$(cat VERSION) && \
+	docker build -t $(DOCKER_IMAGE):$$VERSION . && \
+	docker build -t $(DOCKER_IMAGE):latest .
+
+# 推送镜像到仓库
+push-version:
+	@VERSION=$$(cat VERSION) && \
+	docker push $(DOCKER_IMAGE):$$VERSION && \
+	docker push $(DOCKER_IMAGE):latest

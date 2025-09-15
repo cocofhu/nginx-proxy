@@ -63,6 +63,37 @@ func (h *Handler) validateSSLConfig(req *CreateRuleRequest) error {
 	return nil
 }
 
+// validateUniqueServerNamePort 验证域名和端口组合的唯一性
+func (h *Handler) validateUniqueServerNamePort(serverName string, listenPorts []int, excludeID string) error {
+	var existingRules []db.Rule
+	query := h.db.Where("server_name = ?", serverName)
+	if excludeID != "" {
+		query = query.Where("id != ?", excludeID)
+	}
+
+	if err := query.Find(&existingRules).Error; err != nil {
+		return fmt.Errorf("failed to check existing rules: %w", err)
+	}
+
+	for _, existingRule := range existingRules {
+		existingPorts, err := existingRule.GetListenPorts()
+		if err != nil {
+			continue // 跳过无法解析端口的规则
+		}
+
+		// 检查是否有端口冲突
+		for _, newPort := range listenPorts {
+			for _, existingPort := range existingPorts {
+				if newPort == existingPort {
+					return fmt.Errorf("server_name '%s' with port %d already exists", serverName, newPort)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 // GetRules 获取所有规则
 func (h *Handler) GetRules(c *gin.Context) {
 	var rules []db.Rule
@@ -118,6 +149,12 @@ func (h *Handler) CreateRule(c *gin.Context) {
 	// 验证 SSL 配置
 	if err := h.validateSSLConfig(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 验证域名和端口组合的唯一性
+	if err := h.validateUniqueServerNamePort(req.ServerName, req.ListenPorts, ""); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -194,6 +231,12 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 	// 验证 SSL 配置
 	if err := h.validateSSLConfig(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 验证域名和端口组合的唯一性（排除当前规则）
+	if err := h.validateUniqueServerNamePort(req.ServerName, req.ListenPorts, id); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
 

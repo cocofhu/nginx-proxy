@@ -5,8 +5,6 @@ variables:
   DOCKER_REGISTRY: registry.service.arpa:443
   TENCENT_REGISTRY: ccr.ccs.tencentyun.com
   PROJECT_NAME: nginx-proxy
-  # 版本号可以通过 git tag 或者手动设置
-  VERSION: ${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}
 
 docker-build:
   image: docker:cli
@@ -20,12 +18,7 @@ docker-build:
     DOCKER_TLS_CERTDIR: ""
     DOCKER_DRIVER: overlay2
   before_script:
-    - |
-      if [[ -n "$CI_COMMIT_TAG" ]]; then
-        export VERSION="$CI_COMMIT_TAG"
-      else
-        export VERSION="v1.0.0-${CI_COMMIT_SHORT_SHA}"
-      fi
+    - 'if [[ -n "$CI_COMMIT_TAG" ]]; then export VERSION="$CI_COMMIT_TAG"; else export VERSION="v1.0.0-${CI_COMMIT_SHORT_SHA}"; fi'
     - echo "Building version: $VERSION"
     - export DOCKER_IMAGE_VERSIONED="$DOCKER_REGISTRY/$PROJECT_NAME:$VERSION"
     - export DOCKER_IMAGE_LATEST="$DOCKER_REGISTRY/$PROJECT_NAME:latest"
@@ -35,33 +28,8 @@ docker-build:
     - echo "Building Docker images..."
     - echo "Versioned image: $DOCKER_IMAGE_VERSIONED"
     - echo "Latest image: $DOCKER_IMAGE_LATEST"
-    
-    # 构建镜像
     - docker build --pull -t "$DOCKER_IMAGE_VERSIONED" .
-    
-    # 推送版本化镜像到内部仓库
     - docker push "$DOCKER_IMAGE_VERSIONED"
-    
-    # 如果是主分支或者是 tag，推送 latest 标签
-#    - |
-#      if [[ "$CI_COMMIT_REF_NAME" == "$CI_DEFAULT_BRANCH" ]] || [[ -n "$CI_COMMIT_TAG" ]]; then
-#        echo "Pushing latest tag to internal registry..."
-#        docker tag "$DOCKER_IMAGE_VERSIONED" "$DOCKER_IMAGE_LATEST"
-#        docker push "$DOCKER_IMAGE_LATEST"
-#
-#        echo "Pushing to Tencent Cloud Registry..."
-#        docker login ccr.ccs.tencentyun.com --username="$TENCENT_DOCKER_USER" --password="$TENCENT_DOCKER_PASS"
-#
-#        # 推送版本化镜像到腾讯云
-#        docker tag "$DOCKER_IMAGE_VERSIONED" "$DOCKER_IMAGE_TENCENT_VERSIONED"
-#        docker push "$DOCKER_IMAGE_TENCENT_VERSIONED"
-#
-#        # 推送 latest 标签到腾讯云
-#        docker tag "$DOCKER_IMAGE_VERSIONED" "$DOCKER_IMAGE_TENCENT_LATEST"
-#        docker push "$DOCKER_IMAGE_TENCENT_LATEST"
-#
-#        echo "Successfully pushed to both registries"
-#      fi
   rules:
     - if: $CI_COMMIT_BRANCH
       exists:
@@ -69,4 +37,3 @@ docker-build:
     - if: $CI_COMMIT_TAG
       exists:
         - Dockerfile
-

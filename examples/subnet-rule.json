@@ -1,0 +1,23 @@
+{
+  "server_name": "app.example.com",
+  "listen_ports": [80, 443],
+  "locations": [
+    {
+      "path": "/",
+      "upstreams": [
+        {
+          "condition_ip": "192.168.1.0/24",
+          "target": "http://internal-subnet:8080"
+        },
+        {
+          "condition_ip": "10.0.0.0/16",
+          "target": "http://office-network:8080"
+        },
+        {
+          "condition_ip": "0.0.0.0/0",
+          "target": "http://public-server:8080"
+        }
+      ]
+    }
+  ]
+}

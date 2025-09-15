@@ -26,11 +26,16 @@ RUN apk --no-cache add ca-certificates curl
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy
 
 # 创建必要的目录
-RUN mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/certs
+RUN mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/certs \
+    /var/log/nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx /var/cache/nginx
 
 # 复制默认配置和模板
 COPY config.json /app/config/config.json.default
 COPY template/ /app/template/
+
+# 复制优化的 Nginx 配置文件
+COPY nginx-docker.conf /etc/nginx/nginx.conf
 
 # 复制静态文件
 COPY web/static/ /app/web/static/

@@ -1,0 +1,19 @@
+{
+  "server_name": "api.example.com",
+  "listen_ports": [80, 443],
+  "locations": [
+    {
+      "path": "/",
+      "upstreams": [
+        {
+          "condition_ip": "192.168.2.45/32",
+          "target": "http://git.service.arpa"
+        },
+        {
+          "condition_ip": "0.0.0.0/0",
+          "target": "http://192.168.2.1"
+        }
+      ]
+    }
+  ]
+}

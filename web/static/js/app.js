@@ -73,6 +73,33 @@ function setupEventListeners() {
             sslConfig.classList.add('hidden');
         }
     });
+
+    // 编辑代理相关事件
+    const closeEditModal = document.getElementById('close-edit-modal');
+    const cancelEditProxy = document.getElementById('cancel-edit-proxy');
+    
+    closeEditModal?.addEventListener('click', closeEditProxyModal);
+    cancelEditProxy?.addEventListener('click', closeEditProxyModal);
+    
+    // 编辑代理表单提交
+    const editProxyForm = document.getElementById('edit-proxy-form');
+    editProxyForm?.addEventListener('submit', handleEditProxy);
+    
+    // 编辑分流规则按钮
+    const editAddUpstreamBtn = document.getElementById('edit-add-upstream');
+    editAddUpstreamBtn?.addEventListener('click', () => addEditUpstreamConfig());
+    
+    // 编辑SSL复选框变化事件
+    const editSslCheckbox = document.getElementById('edit-proxy-ssl');
+    const editSslConfig = document.getElementById('edit-ssl-config');
+    editSslCheckbox?.addEventListener('change', function() {
+        if (this.checked) {
+            editSslConfig.classList.remove('hidden');
+            loadCertificatesForEditSelect();
+        } else {
+            editSslConfig.classList.add('hidden');
+        }
+    });
 }
 
 // 设置导航
@@ -370,13 +397,221 @@ window.editRule = async function(ruleId) {
     try {
         const response = await apiCall(`/rules/${ruleId}`);
         
-        // 填充编辑表单（这里简化处理，实际应该有编辑模态框）
-        console.log('Edit rule:', response);
-        showNotification('编辑功能开发中', 'info');
+        // 填充编辑表单
+        await populateEditForm(response);
+        
+        // 显示编辑模态框
+        showEditProxyModal();
         
     } catch (error) {
         console.error('Failed to load rule for editing:', error);
         showNotification('加载规则失败', 'error');
+    }
+}
+
+// 显示编辑代理模态框
+function showEditProxyModal() {
+    const modal = document.getElementById('edit-proxy-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    
+    // 加载证书列表到选择框
+    loadCertificatesForEditSelect();
+}
+
+// 关闭编辑代理模态框
+function closeEditProxyModal() {
+    const modal = document.getElementById('edit-proxy-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    
+    // 清空表单
+    document.getElementById('edit-proxy-form').reset();
+    document.getElementById('edit-upstream-configs').innerHTML = '';
+    
+    // 重置SSL配置
+    const sslCheckbox = document.getElementById('edit-proxy-ssl');
+    const sslConfig = document.getElementById('edit-ssl-config');
+    sslCheckbox.checked = false;
+    sslConfig.classList.add('hidden');
+}
+
+// 填充编辑表单
+async function populateEditForm(rule) {
+    // 填充基本信息
+    document.getElementById('edit-proxy-id').value = rule.id;
+    document.getElementById('edit-proxy-domain').value = rule.server_name;
+    
+    // 填充路径（取第一个location的路径）
+    const firstLocation = rule.locations && rule.locations[0];
+    if (firstLocation) {
+        document.getElementById('edit-proxy-path').value = firstLocation.path || '/';
+    }
+    
+    // 填充SSL配置
+    const sslCheckbox = document.getElementById('edit-proxy-ssl');
+    const sslConfig = document.getElementById('edit-ssl-config');
+    
+    if (rule.ssl_cert) {
+        sslCheckbox.checked = true;
+        sslConfig.classList.remove('hidden');
+        
+        // 根据证书路径找到对应的证书ID
+        try {
+            const certResponse = await apiCall('/certificates');
+            const certificates = certResponse.certificates || [];
+            const matchingCert = certificates.find(cert => 
+                cert.cert_path === rule.ssl_cert || cert.key_path === rule.ssl_key
+            );
+            
+            if (matchingCert) {
+                // 延迟设置选中的证书，等待证书列表加载完成
+                setTimeout(() => {
+                    const certSelect = document.getElementById('edit-proxy-certificate');
+                    if (certSelect) {
+                        certSelect.value = matchingCert.id;
+                    }
+                }, 100);
+            }
+        } catch (error) {
+            console.error('Failed to load certificates for edit form:', error);
+        }
+    } else {
+        sslCheckbox.checked = false;
+        sslConfig.classList.add('hidden');
+    }
+    
+    // 填充分流配置
+    const upstreamContainer = document.getElementById('edit-upstream-configs');
+    upstreamContainer.innerHTML = '';
+    
+    if (firstLocation && firstLocation.upstreams) {
+        firstLocation.upstreams.forEach(upstream => {
+            addEditUpstreamConfig(upstream.condition_ip, upstream.target);
+        });
+    } else {
+        // 如果没有分流配置，添加一个默认的
+        addEditUpstreamConfig('0.0.0.0/0', '');
+    }
+}
+
+// 添加编辑分流配置
+function addEditUpstreamConfig(condition = '', target = '') {
+    const container = document.getElementById('edit-upstream-configs');
+    const newConfig = document.createElement('div');
+    newConfig.className = 'upstream-config border border-gray-200 rounded-md p-3';
+    newConfig.innerHTML = `
+        <div class="grid grid-cols-2 gap-2">
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
+                <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="${condition}">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">目标地址</label>
+                <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000" value="${target}">
+            </div>
+        </div>
+        <button type="button" class="remove-upstream mt-2 text-xs text-red-600 hover:text-red-800">移除</button>
+    `;
+    
+    // 添加移除按钮事件
+    newConfig.querySelector('.remove-upstream').addEventListener('click', function() {
+        newConfig.remove();
+    });
+    
+    container.appendChild(newConfig);
+}
+
+// 加载证书到编辑选择框
+async function loadCertificatesForEditSelect() {
+    const certificateSelect = document.getElementById('edit-proxy-certificate');
+    if (!certificateSelect) return;
+    
+    try {
+        const response = await apiCall('/certificates');
+        const certificates = response.certificates || [];
+        
+        certificateSelect.innerHTML = '<option value="">选择证书...</option>' + 
+            certificates.map(cert => `
+                <option value="${cert.id}">${cert.name} (${cert.domain || 'N/A'})</option>
+            `).join('');
+            
+    } catch (error) {
+        console.error('Failed to load certificates for edit select:', error);
+        certificateSelect.innerHTML = '<option value="">加载失败</option>';
+    }
+}
+
+// 处理编辑代理提交
+async function handleEditProxy(e) {
+    e.preventDefault();
+    
+    const ruleId = document.getElementById('edit-proxy-id').value;
+    const domain = document.getElementById('edit-proxy-domain').value;
+    const path = document.getElementById('edit-proxy-path').value || '/';
+    const ssl = document.getElementById('edit-proxy-ssl').checked;
+    const certificateId = document.getElementById('edit-proxy-certificate').value;
+    
+    // 收集所有分流配置
+    const upstreamConfigs = [];
+    const upstreamElements = document.querySelectorAll('#edit-upstream-configs .upstream-config');
+    
+    upstreamElements.forEach(element => {
+        const condition = element.querySelector('.upstream-condition').value.trim();
+        const target = element.querySelector('.upstream-target').value.trim();
+        
+        if (condition && target) {
+            upstreamConfigs.push({
+                condition_ip: condition,
+                target: target
+            });
+        }
+    });
+    
+    if (upstreamConfigs.length === 0) {
+        showNotification('请至少配置一个分流规则', 'warning');
+        return;
+    }
+    
+    let sslCert = '';
+    let sslKey = '';
+    
+    if (ssl && certificateId) {
+        // 获取选中的证书信息
+        try {
+            const certResponse = await apiCall(`/certificates/${certificateId}`);
+            sslCert = certResponse.cert_path;
+            sslKey = certResponse.key_path;
+        } catch (error) {
+            showNotification('获取证书信息失败', 'error');
+            return;
+        }
+    }
+    
+    const ruleData = {
+        server_name: domain,
+        listen_ports: ssl ? [443] : [80],
+        ssl_cert: sslCert,
+        ssl_key: sslKey,
+        locations: [{
+            path: path,
+            upstreams: upstreamConfigs
+        }]
+    };
+    
+    try {
+        await apiCall(`/rules/${ruleId}`, 'PUT', ruleData);
+        showNotification('代理配置已更新', 'success');
+        closeEditProxyModal();
+        
+        // 重新加载代理列表
+        if (currentPage === 'proxies') {
+            loadProxiesData();
+        }
+        
+    } catch (error) {
+        console.error('Failed to update proxy:', error);
+        showNotification('更新代理失败: ' + error.message, 'error');
     }
 }
 

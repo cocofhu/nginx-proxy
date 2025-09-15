@@ -232,6 +232,58 @@
         </div>
     </div>
 
+    <!-- 编辑代理模态框 -->
+    <div id="edit-proxy-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">编辑代理配置</h3>
+                    <button id="close-edit-modal" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="edit-proxy-form" class="space-y-4">
+                    <input type="hidden" id="edit-proxy-id">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">域名</label>
+                        <input type="text" id="edit-proxy-domain" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="example.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">路径</label>
+                        <input type="text" id="edit-proxy-path" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="/" value="/">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">分流配置</label>
+                        <div id="edit-upstream-configs" class="space-y-3">
+                            <!-- 分流配置将通过JavaScript动态加载 -->
+                        </div>
+                        <button type="button" id="edit-add-upstream" class="mt-2 text-sm text-blue-600 hover:text-blue-800">
+                            + 添加分流规则
+                        </button>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="edit-proxy-ssl" class="mr-2">
+                        <label for="edit-proxy-ssl" class="text-sm text-gray-700">启用SSL</label>
+                    </div>
+                    <div id="edit-ssl-config" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">选择证书</label>
+                        <select id="edit-proxy-certificate" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            <option value="">选择证书...</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end space-x-4 pt-4">
+                        <button type="button" id="cancel-edit-proxy" class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-md">
+                            取消
+                        </button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
+                            更新
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- 上传证书模态框 -->
     <div id="add-certificate-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
         <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">

@@ -27,15 +27,15 @@ server {
         # 多个上游服务器，使用条件判断进行 IP 分流
         set $backend "";
         {{- range .Upstreams }}
-        {{- if ne .ConditionIP "0.0.0.0/0" }}
-        # 检查特定 IP: {{ .ConditionIP }}
-        if ($remote_addr ~ "{{ .ConditionIP }}") {
+        {{- if not (isDefaultRoute .ConditionIP) }}
+        # 检查 IP 条件: {{ .ConditionIP }}
+        {{ generateIPCondition .ConditionIP }} {
             set $backend "{{ .Target }}";
         }
         {{- end }}
         {{- end }}
         {{- range .Upstreams }}
-        {{- if eq .ConditionIP "0.0.0.0/0" }}
+        {{- if isDefaultRoute .ConditionIP }}
         # 默认后端
         if ($backend = "") {
             set $backend "{{ .Target }}";

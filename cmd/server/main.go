@@ -27,7 +27,11 @@ func loadConfig(configPath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close config file: %v", closeErr)
+		}
+	}()
 
 	var config Config
 	decoder := json.NewDecoder(file)
@@ -62,16 +66,32 @@ func main() {
 	// 设置路由
 	r := gin.Default()
 
+	// 静态文件服务
+	r.Static("/static", "./web/static")
+	r.StaticFile("/", "./web/static/index.html")
+	r.StaticFile("/favicon.ico", "./web/static/favicon.ico")
+
 	// API 路由组
 	apiGroup := r.Group("/api")
 	{
+		// 代理规则管理
 		apiGroup.GET("/rules", handler.GetRules)
 		apiGroup.GET("/rules/:id", handler.GetRule)
 		apiGroup.POST("/rules", handler.CreateRule)
 		apiGroup.PUT("/rules/:id", handler.UpdateRule)
 		apiGroup.DELETE("/rules/:id", handler.DeleteRule)
+
+		// 系统管理
 		apiGroup.POST("/reload", handler.ReloadNginx)
-		apiGroup.POST("/certificates", handler.UploadCertificate)
+
+		// 证书管理
+		apiGroup.GET("/certificates", handler.GetCertificates)
+		apiGroup.GET("/certificates/:id", handler.GetCertificate)
+		apiGroup.POST("/certificates", handler.UploadCertificateNew)
+		apiGroup.DELETE("/certificates/:id", handler.DeleteCertificate)
+
+		// 基本健康检查
+		apiGroup.GET("/health", handler.HealthCheck)
 	}
 
 	// 启动时重新生成所有配置

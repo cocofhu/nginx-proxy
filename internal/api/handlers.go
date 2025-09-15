@@ -5,11 +5,10 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
 	"gorm.io/gorm"
 
 	"nginx-proxy/internal/core"
@@ -26,12 +25,14 @@ type Handler struct {
 
 // NewHandler 创建新的 API 处理器
 func NewHandler(database *gorm.DB, generator *core.Generator, nginxManager *core.NginxManager, certDir string) *Handler {
-	return &Handler{
+	h := &Handler{
 		db:           database,
 		generator:    generator,
 		nginxManager: nginxManager,
 		certDir:      certDir,
 	}
+
+	return h
 }
 
 // CreateRuleRequest 创建规则请求
@@ -186,7 +187,9 @@ func (h *Handler) CreateRule(c *gin.Context) {
 	// 测试 Nginx 配置
 	if err := h.nginxManager.TestConfig(); err != nil {
 		// 配置测试失败，删除生成的配置文件
-		h.generator.DeleteConfig(rule.ID)
+		if deleteErr := h.generator.DeleteConfig(rule.ID); deleteErr != nil {
+			log.Printf("Warning: Failed to cleanup config file after test failure: %v", deleteErr)
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Nginx config test failed: " + err.Error()})
 		return
 	}
@@ -194,7 +197,9 @@ func (h *Handler) CreateRule(c *gin.Context) {
 	// 保存到数据库
 	if err := h.db.Create(&rule).Error; err != nil {
 		// 数据库保存失败，删除配置文件
-		h.generator.DeleteConfig(rule.ID)
+		if deleteErr := h.generator.DeleteConfig(rule.ID); deleteErr != nil {
+			log.Printf("Warning: Failed to cleanup config file after database save failure: %v", deleteErr)
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -204,7 +209,13 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		log.Printf("Warning: Failed to reload nginx: %v", err)
 	}
 
-	resp, _ := rule.ToResponse()
+	resp, err := rule.ToResponse()
+	if err != nil {
+		log.Printf("Warning: Failed to convert rule to response: %v", err)
+		// 仍然返回成功，因为规则已经创建成功
+		c.JSON(http.StatusCreated, gin.H{"message": "Rule created successfully", "id": rule.ID})
+		return
+	}
 	c.JSON(http.StatusCreated, resp)
 }
 
@@ -278,7 +289,13 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 		log.Printf("Warning: Failed to reload nginx: %v", err)
 	}
 
-	resp, _ := rule.ToResponse()
+	resp, err := rule.ToResponse()
+	if err != nil {
+		log.Printf("Warning: Failed to convert rule to response: %v", err)
+		// 仍然返回成功，因为规则已经更新成功
+		c.JSON(http.StatusOK, gin.H{"message": "Rule updated successfully", "id": rule.ID})
+		return
+	}
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -299,6 +316,7 @@ func (h *Handler) DeleteRule(c *gin.Context) {
 	// 删除配置文件
 	if err := h.generator.DeleteConfig(rule.ID); err != nil {
 		log.Printf("Warning: Failed to delete config file: %v", err)
+		// 继续执行，不阻止删除操作
 	}
 
 	// 从数据库删除
@@ -323,70 +341,6 @@ func (h *Handler) ReloadNginx(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Nginx reloaded successfully"})
-}
-
-// UploadCertificate 上传证书文件
-func (h *Handler) UploadCertificate(c *gin.Context) {
-	// 确保证书目录存在
-	if err := os.MkdirAll(h.certDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create cert directory"})
-		return
-	}
-
-	// 获取上传的文件
-	form, err := c.MultipartForm()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	certFiles := form.File["cert"]
-	keyFiles := form.File["key"]
-
-	if len(certFiles) == 0 || len(keyFiles) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Both cert and key files are required"})
-		return
-	}
-
-	certFile := certFiles[0]
-	keyFile := keyFiles[0]
-
-	// 生成唯一的文件名
-	certID := uuid.New().String()
-	certPath := filepath.Join(h.certDir, fmt.Sprintf("%s.crt", certID))
-	keyPath := filepath.Join(h.certDir, fmt.Sprintf("%s.key", certID))
-
-	// 保存证书文件
-	if err := c.SaveUploadedFile(certFile, certPath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save cert file"})
-		return
-	}
-
-	// 保存密钥文件
-	if err := c.SaveUploadedFile(keyFile, keyPath); err != nil {
-		// 如果密钥保存失败，删除已保存的证书文件
-		os.Remove(certPath)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save key file"})
-		return
-	}
-
-	// 保存证书信息到数据库
-	cert := db.Certificate{
-		ID:       certID,
-		Name:     strings.TrimSuffix(certFile.Filename, filepath.Ext(certFile.Filename)),
-		CertPath: certPath,
-		KeyPath:  keyPath,
-	}
-
-	if err := h.db.Create(&cert).Error; err != nil {
-		// 数据库保存失败，删除文件
-		os.Remove(certPath)
-		os.Remove(keyPath)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, cert)
 }
 
 // RegenerateAllConfigs 重新生成所有配置文件

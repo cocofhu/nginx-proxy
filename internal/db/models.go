@@ -9,14 +9,14 @@ import (
 
 // Rule 代表一个 Nginx 反向代理规则
 type Rule struct {
-	ID          string     `json:"id" gorm:"primaryKey"`
-	ServerName  string     `json:"server_name" gorm:"not null"`
-	ListenPorts string     `json:"-" gorm:"column:listen_ports"` // JSON 存储
-	SSLCert     string     `json:"ssl_cert"`
-	SSLKey      string     `json:"ssl_key"`
-	Locations   string     `json:"-" gorm:"column:locations;type:text"` // JSON 存储
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID          string         `json:"id" gorm:"primaryKey"`
+	ServerName  string         `json:"server_name" gorm:"not null"`
+	ListenPorts string         `json:"-" gorm:"column:listen_ports"` // JSON 存储
+	SSLCert     string         `json:"ssl_cert"`
+	SSLKey      string         `json:"ssl_key"`
+	Locations   string         `json:"-" gorm:"column:locations;type:text"` // JSON 存储
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
@@ -90,7 +90,7 @@ func (r *Rule) ToResponse() (*RuleResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	locations, err := r.GetLocations()
 	if err != nil {
 		return nil, err
@@ -108,11 +108,15 @@ func (r *Rule) ToResponse() (*RuleResponse, error) {
 	}, nil
 }
 
-// Certificate 代表证书信息
+// Certificate 代表一个SSL证书
 type Certificate struct {
-	ID        string    `json:"id" gorm:"primaryKey"`
-	Name      string    `json:"name" gorm:"not null"`
-	CertPath  string    `json:"cert_path" gorm:"not null"`
-	KeyPath   string    `json:"key_path" gorm:"not null"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string         `json:"id" gorm:"primaryKey"`
+	Name      string         `json:"name" gorm:"not null"`
+	Domain    string         `json:"domain"`
+	CertPath  string         `json:"cert_path" gorm:"not null"`
+	KeyPath   string         `json:"key_path" gorm:"not null"`
+	ExpiresAt time.Time      `json:"expires_at"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }

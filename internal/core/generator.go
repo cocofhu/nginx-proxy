@@ -62,7 +62,12 @@ func (g *Generator) GenerateConfig(rule *db.Rule) error {
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			// 记录关闭文件时的错误，但不影响主要流程
+			fmt.Printf("Warning: Failed to close config file: %v\n", closeErr)
+		}
+	}()
 
 	// 执行模板渲染
 	if err := g.template.Execute(file, templateData); err != nil {

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nginx Proxy 管理界面</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar-transition { transition: transform 0.3s ease-in-out; }
+        .content-blur { backdrop-filter: blur(10px); }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <!-- 侧边栏 -->
+    <div id="sidebar" class="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg sidebar-transition transform -translate-x-full lg:translate-x-0">
+        <div class="flex items-center justify-center h-16 gradient-bg">
+            <h1 class="text-xl font-bold text-white">
+                <i class="fas fa-server mr-2"></i>
+                Nginx Proxy
+            </h1>
+        </div>
+        <nav class="mt-8">
+            <a href="#dashboard" class="nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors duration-200">
+                <i class="fas fa-tachometer-alt mr-3"></i>
+                仪表板
+            </a>
+            <a href="#proxies" class="nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors duration-200">
+                <i class="fas fa-exchange-alt mr-3"></i>
+                代理配置
+            </a>
+            <a href="#certificates" class="nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors duration-200">
+                <i class="fas fa-certificate mr-3"></i>
+                证书管理
+            </a>
+
+        </nav>
+    </div>
+
+    <!-- 主内容区域 -->
+    <div class="lg:ml-64">
+        <!-- 顶部导航栏 -->
+        <header class="bg-white shadow-sm border-b border-gray-200">
+            <div class="flex items-center justify-between px-6 py-4">
+                <button id="sidebar-toggle" class="lg:hidden text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- 页面内容 -->
+        <main class="p-6">
+            <!-- 仪表板页面 -->
+            <div id="dashboard-page" class="page-content">
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-900">仪表板</h2>
+                    <p class="text-gray-600">Nginx 代理管理系统</p>
+                </div>
+
+                <!-- 快速操作卡片 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="bg-white rounded-lg shadow-sm p-6 card-hover">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-blue-100 text-blue-600">
+                                <i class="fas fa-exchange-alt text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-600">代理配置</p>
+                                <p class="text-lg text-gray-900">管理反向代理规则</p>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <button onclick="showPage('proxies')" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
+                                管理代理
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-sm p-6 card-hover">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-green-100 text-green-600">
+                                <i class="fas fa-certificate text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-600">SSL证书</p>
+                                <p class="text-lg text-gray-900">管理SSL证书</p>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <button onclick="showPage('certificates')" class="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
+                                证书管理
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 代理配置页面 -->
+            <div id="proxies-page" class="page-content hidden">
+                <div class="mb-6 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900">代理配置</h2>
+                        <p class="text-gray-600">管理反向代理规则</p>
+                    </div>
+                    <button id="add-proxy-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
+                        <i class="fas fa-plus mr-2"></i>
+                        添加代理
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm">
+                    <div class="p-6">
+                        <div>
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">域名</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">目标地址</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SSL</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="proxies-table" class="bg-white divide-y divide-gray-200">
+                                    <!-- 代理列表将通过JavaScript动态加载 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 证书管理页面 -->
+            <div id="certificates-page" class="page-content hidden">
+                <div class="mb-6 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900">证书管理</h2>
+                        <p class="text-gray-600">管理SSL证书</p>
+                    </div>
+                    <button id="add-certificate-btn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
+                        <i class="fas fa-plus mr-2"></i>
+                        上传证书
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm">
+                    <div class="p-6">
+                        <div>
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">域名</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">过期时间</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="certificates-table" class="bg-white divide-y divide-gray-200">
+                                    <!-- 证书列表将通过JavaScript动态加载 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- 添加代理模态框 -->
+    <div id="add-proxy-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">添加代理配置</h3>
+                    <button id="close-modal" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="add-proxy-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">域名</label>
+                        <input type="text" id="proxy-domain" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="example.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">路径</label>
+                        <input type="text" id="proxy-path" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="/" value="/">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">分流配置</label>
+                        <div id="upstream-configs" class="space-y-3">
+                            <div class="upstream-config border border-gray-200 rounded-md p-3">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
+                                        <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="0.0.0.0/0">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600 mb-1">目标地址</label>
+                                        <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" id="add-upstream" class="mt-2 text-sm text-blue-600 hover:text-blue-800">
+                            + 添加分流规则
+                        </button>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="proxy-ssl" class="mr-2">
+                        <label for="proxy-ssl" class="text-sm text-gray-700">启用SSL</label>
+                    </div>
+                    <div id="ssl-config" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">选择证书</label>
+                        <select id="proxy-certificate" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            <option value="">选择证书...</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end space-x-4 pt-4">
+                        <button type="button" id="cancel-add-proxy" class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-md">
+                            取消
+                        </button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
+                            添加
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上传证书模态框 -->
+    <div id="add-certificate-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">上传SSL证书</h3>
+                    <button id="close-certificate-modal" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="add-certificate-form" class="space-y-4" enctype="multipart/form-data">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">证书名称</label>
+                        <input type="text" id="certificate-name" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="证书名称">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">证书文件 (.crt/.pem)</label>
+                        <input type="file" id="certificate-cert" accept=".crt,.pem" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">私钥文件 (.key)</label>
+                        <input type="file" id="certificate-key" accept=".key" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                    </div>
+                    <div class="flex justify-end space-x-4 pt-4">
+                        <button type="button" id="cancel-add-certificate" class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-md">
+                            取消
+                        </button>
+                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md">
+                            上传
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/js/app.js"></script>
+</body>
+</html>

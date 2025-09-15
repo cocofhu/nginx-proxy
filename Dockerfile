@@ -25,23 +25,27 @@ RUN apk --no-cache add ca-certificates curl
 # 复制构建的二进制文件
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy
 
-# 复制配置文件和模板
-COPY config.json /app/
+# 创建必要的目录
+RUN mkdir -p /app/data /app/config /app/template /etc/nginx/certs
+
+# 复制默认配置文件和模板到默认位置
+COPY config.json /app/config/config.json.default
 COPY template/ /app/template/
 COPY nginx.conf /etc/nginx/nginx.conf
 
 # 设置工作目录
 WORKDIR /app
 
-# 创建数据目录和必要的目录
-RUN mkdir -p /app/data /etc/nginx/certs
-
-# 修改配置文件中的路径以适应容器环境
-RUN sed -i 's|"./nginx-proxy.db"|"/app/data/nginx-proxy.db"|g' config.json
-
-# 创建启动脚本
+# 创建启动脚本，支持配置文件挂载
 RUN echo '#!/bin/sh' > /start.sh && \
-    echo 'nginx-proxy &' >> /start.sh && \
+    echo '# 如果没有挂载配置文件，使用默认配置' >> /start.sh && \
+    echo 'if [ ! -f /app/config/config.json ]; then' >> /start.sh && \
+    echo '  cp /app/config/config.json.default /app/config/config.json' >> /start.sh && \
+    echo 'fi' >> /start.sh && \
+    echo '# 修改配置文件中的数据库路径' >> /start.sh && \
+    echo 'sed -i "s|\"./nginx-proxy.db\"|\"./data/nginx-proxy.db\"|g" /app/config/config.json' >> /start.sh && \
+    echo '# 启动应用，指定配置文件路径' >> /start.sh && \
+    echo 'nginx-proxy -config=/app/config/config.json &' >> /start.sh && \
     echo 'nginx -g "daemon off;"' >> /start.sh && \
     chmod +x /start.sh
 
@@ -56,8 +60,8 @@ VOLUME ["/var/log/nginx"]
 # Nginx 日志目录
 VOLUME ["/app/template"]
 # 模板文件目录（可自定义模板）
-VOLUME ["/app/config.json"]
-# 应用配置文件
+VOLUME ["/app/config"]
+# 应用配置目录（而不是单个文件）
 
 # 暴露端口
 EXPOSE 80 443 8080

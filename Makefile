@@ -70,12 +70,16 @@ docker-build-simple:
 
 # Docker 运行
 docker-run:
+	@mkdir -p data nginx-conf nginx-certs logs config template
 	docker run -d \
 		--name $(APP_NAME) \
 		-p 8080:8080 \
 		-v $(PWD)/data:/app/data \
 		-v $(PWD)/nginx-conf:/etc/nginx/conf.d \
 		-v $(PWD)/nginx-certs:/etc/nginx/certs \
+		-v $(PWD)/logs:/var/log/nginx \
+		-v $(PWD)/config:/app/config \
+		-v $(PWD)/template:/app/template \
 		$(DOCKER_IMAGE)
 
 # Docker Compose 启动（生产环境）
@@ -109,6 +113,9 @@ docker-single: docker-build
 		-v $(PWD)/data:/app/data \
 		-v $(PWD)/nginx-conf:/etc/nginx/conf.d \
 		-v $(PWD)/nginx-certs:/etc/nginx/certs \
+		-v $(PWD)/logs:/var/log/nginx \
+		-v $(PWD)/config:/app/config \
+		-v $(PWD)/template:/app/template \
 		$(DOCKER_IMAGE)
 	@echo "nginx-proxy 已启动："
 	@echo "  - API: http://localhost:8080"

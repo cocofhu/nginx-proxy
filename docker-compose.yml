@@ -10,6 +10,8 @@ services:
       - ./nginx-conf:/etc/nginx/conf.d
       - ./nginx-certs:/etc/nginx/certs
       - ./logs:/var/log/nginx
+      - ./config:/app/config
+      - ./template:/app/template
     environment:
       - GIN_MODE=release
     restart: unless-stopped

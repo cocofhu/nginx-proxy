@@ -20,7 +20,6 @@ docker-build:
     DOCKER_TLS_CERTDIR: ""
     DOCKER_DRIVER: overlay2
   before_script:
-    # 设置版本号
     - |
       if [[ -n "$CI_COMMIT_TAG" ]]; then
         export VERSION="$CI_COMMIT_TAG"
@@ -28,7 +27,6 @@ docker-build:
         export VERSION="v1.0.0-${CI_COMMIT_SHORT_SHA}"
       fi
     - echo "Building version: $VERSION"
-    # 设置镜像名称
     - export DOCKER_IMAGE_VERSIONED="$DOCKER_REGISTRY/$PROJECT_NAME:$VERSION"
     - export DOCKER_IMAGE_LATEST="$DOCKER_REGISTRY/$PROJECT_NAME:latest"
     - export DOCKER_IMAGE_TENCENT_VERSIONED="$TENCENT_REGISTRY/cocofhu/$PROJECT_NAME:$VERSION"

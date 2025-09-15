@@ -4,13 +4,18 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	// 导入纯 Go SQLite 驱动
+	_ "modernc.org/sqlite"
 )
 
 // InitDB 初始化数据库连接
 // 使用纯 Go SQLite 驱动，避免 CGO 编译问题
 func InitDB(dbPath string) (*gorm.DB, error) {
-	// 使用纯 Go SQLite 驱动
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+	// 使用纯 Go SQLite 驱动，添加参数确保兼容性
+	dsn := dbPath + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
+
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 	if err != nil {

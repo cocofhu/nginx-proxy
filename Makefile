@@ -10,25 +10,15 @@ check-go:
 	@which go > /dev/null || (echo "Go is not installed or not in PATH. Please install Go 1.21+ from https://golang.org/dl/" && exit 1)
 	@echo "Go version: $$(go version)"
 
-# 构建应用
+# 构建应用（纯 Go，无 CGO）
 build: check-go
 	@mkdir -p bin
-	CGO_ENABLED=1 go build -o bin/$(APP_NAME) ./cmd/server
+	@echo "构建纯 Go 版本..."
+	CGO_ENABLED=0 go build -tags "sqlite_omit_load_extension" -ldflags "-s -w" -o bin/$(APP_NAME) ./cmd/server
+	@echo "构建完成: bin/$(APP_NAME)"
 
 # Docker 构建（用于 Dockerfile 中）
-docker-build-binary:
-	@mkdir -p bin
-	CGO_ENABLED=1 go build -o bin/$(APP_NAME) ./cmd/server
-
-# Alpine 构建（修复 SQLite 兼容性问题）
-alpine-build:
-	@mkdir -p bin
-	CGO_ENABLED=1 go build -tags "sqlite_omit_load_extension" -o bin/$(APP_NAME) ./cmd/server
-
-# 纯 Go 构建（无需 CGO，推荐用于 Docker）
-build-no-cgo:
-	@mkdir -p bin
-	CGO_ENABLED=0 go build -o bin/$(APP_NAME) ./cmd/server
+docker-build-binary: build
 
 # 运行应用
 run: check-go
@@ -60,13 +50,7 @@ lint:
 docker-build:
 	docker build -t $(DOCKER_IMAGE) .
 
-# Docker 构建（Debian 版本，解决 SQLite 编译问题）
-docker-build-debian:
-	docker build -f Dockerfile.debian -t $(DOCKER_IMAGE) .
 
-# Docker 构建（最简单版本，纯 Go 无 CGO）
-docker-build-simple:
-	docker build -f Dockerfile.simple -t $(DOCKER_IMAGE) .
 
 # Docker 运行
 docker-run:
@@ -82,23 +66,9 @@ docker-run:
 		-v $(PWD)/template:/app/template \
 		$(DOCKER_IMAGE)
 
-# Docker Compose 启动（生产环境）
-compose-up:
-	docker-compose up -d
 
-# Docker Compose 停止
-compose-down:
-	docker-compose down
 
-# Docker 开发环境（无需本地 Go）
-dev-docker:
-	@echo "启动开发环境（无需本地 Go 环境）..."
-	@mkdir -p data nginx-conf nginx-certs logs
-	docker-compose -f docker-compose.dev.yml up -d
 
-# 停止开发环境
-dev-docker-down:
-	docker-compose -f docker-compose.dev.yml down
 
 # 单容器部署（推荐）
 docker-single: docker-build

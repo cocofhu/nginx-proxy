@@ -1,5 +1,5 @@
 # 纯 Go 构建 Dockerfile - 无 CGO 依赖
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 

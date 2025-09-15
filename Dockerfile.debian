@@ -1,10 +1,16 @@
-# 构建阶段
-FROM golang:1.21-alpine AS builder
+# 构建阶段 - 使用 Debian 基础镜像避免 Alpine 的 SQLite 问题
+FROM golang:1.21-bullseye AS builder
 
 WORKDIR /app
 
-# 安装必要的包（包含 make）
-RUN apk add --no-cache git gcc musl-dev sqlite-dev make
+# 安装必要的包
+RUN apt-get update && apt-get install -y \
+    git \
+    gcc \
+    libc6-dev \
+    libsqlite3-dev \
+    make \
+    && rm -rf /var/lib/apt/lists/*
 
 # 复制 go mod 文件
 COPY go.mod go.sum ./
@@ -13,8 +19,8 @@ RUN go mod download
 # 复制源代码和 Makefile
 COPY . .
 
-# 使用 make 构建应用（修复 SQLite 编译问题）
-RUN make alpine-build
+# 使用 make 构建应用
+RUN make build
 
 # 运行阶段 - 基于官方 nginx 镜像
 FROM nginx:alpine
@@ -46,18 +52,12 @@ RUN echo '#!/bin/sh' > /start.sh && \
     chmod +x /start.sh
 
 # 定义可挂载的卷
-VOLUME ["/app/data"]
-# 数据库文件存储
-VOLUME ["/etc/nginx/conf.d"]
-# Nginx 配置文件目录
-VOLUME ["/etc/nginx/certs"]
-# SSL 证书存储目录
-VOLUME ["/var/log/nginx"]
-# Nginx 日志目录
-VOLUME ["/app/template"]
-# 模板文件目录（可自定义模板）
-VOLUME ["/app/config.json"]
-# 应用配置文件
+VOLUME ["/app/data"]                    # 数据库文件存储
+VOLUME ["/etc/nginx/conf.d"]            # Nginx 配置文件目录
+VOLUME ["/etc/nginx/certs"]             # SSL 证书存储目录
+VOLUME ["/var/log/nginx"]               # Nginx 日志目录
+VOLUME ["/app/template"]                # 模板文件目录（可自定义模板）
+VOLUME ["/app/config.json"]             # 应用配置文件
 
 # 暴露端口
 EXPOSE 80 443 8080

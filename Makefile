@@ -13,7 +13,17 @@ check-go:
 # 构建应用
 build: check-go
 	@mkdir -p bin
-	go build -o bin/$(APP_NAME) ./cmd/server
+	CGO_ENABLED=1 go build -o bin/$(APP_NAME) ./cmd/server
+
+# Docker 构建（用于 Dockerfile 中）
+docker-build-binary:
+	@mkdir -p bin
+	CGO_ENABLED=1 go build -o bin/$(APP_NAME) ./cmd/server
+
+# Alpine 构建（修复 SQLite 兼容性问题）
+alpine-build:
+	@mkdir -p bin
+	CGO_ENABLED=1 go build -tags "sqlite_omit_load_extension" -o bin/$(APP_NAME) ./cmd/server
 
 # 运行应用
 run: check-go
@@ -41,9 +51,13 @@ fmt:
 lint:
 	golangci-lint run
 
-# Docker 构建
+# Docker 构建（Alpine 版本）
 docker-build:
 	docker build -t $(DOCKER_IMAGE) .
+
+# Docker 构建（Debian 版本，解决 SQLite 编译问题）
+docker-build-debian:
+	docker build -f Dockerfile.debian -t $(DOCKER_IMAGE) .
 
 # Docker 运行
 docker-run:

@@ -64,7 +64,7 @@ Web 界面功能：
 
 ### Docker 运行（推荐）
 
-项目使用纯 Go 构建，无 CGO 依赖，确保最佳兼容性：
+项目使用纯 Go 构建，无 CGO 依赖，确保最佳兼容性。Docker 镜像已包含完整的 Web 静态文件：
 
 ```bash
 # 构建并启动（包含 nginx）
@@ -78,6 +78,18 @@ make docker-build
 
 # 运行容器
 make docker-run
+```
+
+**Docker 镜像特性**：
+- ✅ 包含完整的 Web 管理界面静态文件
+- ✅ 自动复制 `/web/static/` 目录到容器
+- ✅ 支持静态文件卷挂载（可选）
+- ✅ 纯 Go 构建，无 CGO 依赖
+
+**测试 Docker 构建**：
+```bash
+# 运行 Docker 测试脚本
+./scripts/test-docker.sh
 ```
 
 

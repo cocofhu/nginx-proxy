@@ -26,11 +26,14 @@ RUN apk --no-cache add ca-certificates curl
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy
 
 # 创建必要的目录
-RUN mkdir -p /app/data /app/config /app/template /etc/nginx/certs
+RUN mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/certs
 
 # 复制默认配置和模板
 COPY config.json /app/config/config.json.default
 COPY template/ /app/template/
+
+# 复制静态文件
+COPY web/static/ /app/web/static/
 
 # 设置工作目录
 WORKDIR /app
@@ -52,7 +55,7 @@ RUN echo '#!/bin/sh' > /start.sh && \
     chmod +x /start.sh
 
 # 定义卷
-VOLUME ["/app/data", "/etc/nginx/conf.d", "/etc/nginx/certs", "/var/log/nginx", "/app/template", "/app/config"]
+VOLUME ["/app/data", "/etc/nginx/conf.d", "/etc/nginx/certs", "/var/log/nginx", "/app/template", "/app/config", "/app/web/static"]
 
 # 暴露端口
 EXPOSE 80 443 8080

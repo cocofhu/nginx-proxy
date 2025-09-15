@@ -69,7 +69,6 @@ func main() {
 	// 静态文件服务
 	r.Static("/static", "./web/static")
 	r.StaticFile("/", "./web/static/index.html")
-	r.StaticFile("/favicon.ico", "./web/static/favicon.ico")
 
 	// API 路由组
 	apiGroup := r.Group("/api")

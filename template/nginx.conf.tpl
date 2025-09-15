@@ -43,10 +43,13 @@ server {
         {{- end }}
         {{- end }}
 
-        proxy_pass $backend;
+        # 动态解析后端域名
+        set $upstream $backend;
+        proxy_pass $upstream;
         {{- else }}
         # 单个上游服务器
-        proxy_pass {{ (index .Upstreams 0).Target }};
+        set $upstream "{{ (index .Upstreams 0).Target }}";
+        proxy_pass $upstream;
         {{- end }}
 
         # 代理头设置

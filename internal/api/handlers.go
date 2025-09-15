@@ -1,0 +1,363 @@
+package api
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+
+	"nginx-proxy/internal/core"
+	"nginx-proxy/internal/db"
+)
+
+// Handler API 处理器
+type Handler struct {
+	db           *gorm.DB
+	generator    *core.Generator
+	nginxManager *core.NginxManager
+	certDir      string
+}
+
+// NewHandler 创建新的 API 处理器
+func NewHandler(database *gorm.DB, generator *core.Generator, nginxManager *core.NginxManager, certDir string) *Handler {
+	return &Handler{
+		db:           database,
+		generator:    generator,
+		nginxManager: nginxManager,
+		certDir:      certDir,
+	}
+}
+
+// CreateRuleRequest 创建规则请求
+type CreateRuleRequest struct {
+	ServerName  string        `json:"server_name" binding:"required"`
+	ListenPorts []int         `json:"listen_ports" binding:"required"`
+	SSLCert     string        `json:"ssl_cert"`
+	SSLKey      string        `json:"ssl_key"`
+	Locations   []db.Location `json:"locations" binding:"required"`
+}
+
+// validateSSLConfig 验证 SSL 配置
+func (h *Handler) validateSSLConfig(req *CreateRuleRequest) error {
+	// 如果提供了证书或密钥中的任何一个，则两者都必须提供
+	if (req.SSLCert != "" && req.SSLKey == "") || (req.SSLCert == "" && req.SSLKey != "") {
+		return fmt.Errorf("ssl_cert and ssl_key must be provided together or both omitted")
+	}
+
+	// 如果提供了证书配置，检查文件是否存在
+	if req.SSLCert != "" && req.SSLKey != "" {
+		if _, err := os.Stat(req.SSLCert); os.IsNotExist(err) {
+			return fmt.Errorf("ssl certificate file does not exist: %s", req.SSLCert)
+		}
+		if _, err := os.Stat(req.SSLKey); os.IsNotExist(err) {
+			return fmt.Errorf("ssl key file does not exist: %s", req.SSLKey)
+		}
+	}
+
+	return nil
+}
+
+// GetRules 获取所有规则
+func (h *Handler) GetRules(c *gin.Context) {
+	var rules []db.Rule
+	if err := h.db.Find(&rules).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var responses []*db.RuleResponse
+	for _, rule := range rules {
+		resp, err := rule.ToResponse()
+		if err != nil {
+			log.Printf("Error converting rule to response: %v", err)
+			continue
+		}
+		responses = append(responses, resp)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"rules": responses})
+}
+
+// GetRule 获取单个规则
+func (h *Handler) GetRule(c *gin.Context) {
+	id := c.Param("id")
+
+	var rule db.Rule
+	if err := h.db.First(&rule, "id = ?", id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp, err := rule.ToResponse()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// CreateRule 创建新规则
+func (h *Handler) CreateRule(c *gin.Context) {
+	var req CreateRuleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 验证 SSL 配置
+	if err := h.validateSSLConfig(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 创建新规则
+	rule := db.Rule{
+		ID:         uuid.New().String(),
+		ServerName: req.ServerName,
+		SSLCert:    req.SSLCert,
+		SSLKey:     req.SSLKey,
+	}
+
+	// 设置端口和位置
+	if err := rule.SetListenPorts(req.ListenPorts); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set listen ports"})
+		return
+	}
+
+	if err := rule.SetLocations(req.Locations); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set locations"})
+		return
+	}
+
+	// 生成配置文件
+	if err := h.generator.GenerateConfig(&rule); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate config: " + err.Error()})
+		return
+	}
+
+	// 测试 Nginx 配置
+	if err := h.nginxManager.TestConfig(); err != nil {
+		// 配置测试失败，删除生成的配置文件
+		h.generator.DeleteConfig(rule.ID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Nginx config test failed: " + err.Error()})
+		return
+	}
+
+	// 保存到数据库
+	if err := h.db.Create(&rule).Error; err != nil {
+		// 数据库保存失败，删除配置文件
+		h.generator.DeleteConfig(rule.ID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 重新加载 Nginx
+	if err := h.nginxManager.Reload(); err != nil {
+		log.Printf("Warning: Failed to reload nginx: %v", err)
+	}
+
+	resp, _ := rule.ToResponse()
+	c.JSON(http.StatusCreated, resp)
+}
+
+// UpdateRule 更新规则
+func (h *Handler) UpdateRule(c *gin.Context) {
+	id := c.Param("id")
+
+	var rule db.Rule
+	if err := h.db.First(&rule, "id = ?", id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req CreateRuleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 验证 SSL 配置
+	if err := h.validateSSLConfig(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 更新规则字段
+	rule.ServerName = req.ServerName
+	rule.SSLCert = req.SSLCert
+	rule.SSLKey = req.SSLKey
+
+	if err := rule.SetListenPorts(req.ListenPorts); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set listen ports"})
+		return
+	}
+
+	if err := rule.SetLocations(req.Locations); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set locations"})
+		return
+	}
+
+	// 重新生成配置文件
+	if err := h.generator.GenerateConfig(&rule); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate config: " + err.Error()})
+		return
+	}
+
+	// 测试 Nginx 配置
+	if err := h.nginxManager.TestConfig(); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Nginx config test failed: " + err.Error()})
+		return
+	}
+
+	// 更新数据库
+	if err := h.db.Save(&rule).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 重新加载 Nginx
+	if err := h.nginxManager.Reload(); err != nil {
+		log.Printf("Warning: Failed to reload nginx: %v", err)
+	}
+
+	resp, _ := rule.ToResponse()
+	c.JSON(http.StatusOK, resp)
+}
+
+// DeleteRule 删除规则
+func (h *Handler) DeleteRule(c *gin.Context) {
+	id := c.Param("id")
+
+	var rule db.Rule
+	if err := h.db.First(&rule, "id = ?", id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 删除配置文件
+	if err := h.generator.DeleteConfig(rule.ID); err != nil {
+		log.Printf("Warning: Failed to delete config file: %v", err)
+	}
+
+	// 从数据库删除
+	if err := h.db.Delete(&rule).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 重新加载 Nginx
+	if err := h.nginxManager.Reload(); err != nil {
+		log.Printf("Warning: Failed to reload nginx: %v", err)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Rule deleted successfully"})
+}
+
+// ReloadNginx 手动重新加载 Nginx
+func (h *Handler) ReloadNginx(c *gin.Context) {
+	if err := h.nginxManager.Reload(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Nginx reloaded successfully"})
+}
+
+// UploadCertificate 上传证书文件
+func (h *Handler) UploadCertificate(c *gin.Context) {
+	// 确保证书目录存在
+	if err := os.MkdirAll(h.certDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create cert directory"})
+		return
+	}
+
+	// 获取上传的文件
+	form, err := c.MultipartForm()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	certFiles := form.File["cert"]
+	keyFiles := form.File["key"]
+
+	if len(certFiles) == 0 || len(keyFiles) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Both cert and key files are required"})
+		return
+	}
+
+	certFile := certFiles[0]
+	keyFile := keyFiles[0]
+
+	// 生成唯一的文件名
+	certID := uuid.New().String()
+	certPath := filepath.Join(h.certDir, fmt.Sprintf("%s.crt", certID))
+	keyPath := filepath.Join(h.certDir, fmt.Sprintf("%s.key", certID))
+
+	// 保存证书文件
+	if err := c.SaveUploadedFile(certFile, certPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save cert file"})
+		return
+	}
+
+	// 保存密钥文件
+	if err := c.SaveUploadedFile(keyFile, keyPath); err != nil {
+		// 如果密钥保存失败，删除已保存的证书文件
+		os.Remove(certPath)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save key file"})
+		return
+	}
+
+	// 保存证书信息到数据库
+	cert := db.Certificate{
+		ID:       certID,
+		Name:     strings.TrimSuffix(certFile.Filename, filepath.Ext(certFile.Filename)),
+		CertPath: certPath,
+		KeyPath:  keyPath,
+	}
+
+	if err := h.db.Create(&cert).Error; err != nil {
+		// 数据库保存失败，删除文件
+		os.Remove(certPath)
+		os.Remove(keyPath)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, cert)
+}
+
+// RegenerateAllConfigs 重新生成所有配置文件
+func (h *Handler) RegenerateAllConfigs() error {
+	var rules []db.Rule
+	if err := h.db.Find(&rules).Error; err != nil {
+		return err
+	}
+
+	for _, rule := range rules {
+		if err := h.generator.GenerateConfig(&rule); err != nil {
+			log.Printf("Failed to regenerate config for rule %s: %v", rule.ID, err)
+		}
+	}
+
+	return nil
+}

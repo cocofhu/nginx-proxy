@@ -1,0 +1,28 @@
+{
+  "server_name": "api.example.com",
+  "listen_ports": [80, 8080],
+  "locations": [
+    {
+      "path": "/",
+      "upstreams": [
+        {
+          "condition_ip": "192.168.1.0/24",
+          "target": "http://internal-server:8080"
+        },
+        {
+          "condition_ip": "0.0.0.0/0",
+          "target": "http://external-server:8080"
+        }
+      ]
+    },
+    {
+      "path": "/api/",
+      "upstreams": [
+        {
+          "condition_ip": "0.0.0.0/0",
+          "target": "http://api-server:3000"
+        }
+      ]
+    }
+  ]
+}

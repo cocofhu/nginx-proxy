@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  nginx-proxy:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./nginx-conf:/etc/nginx/conf.d
+      - ./nginx-certs:/etc/nginx/certs
+      - ./logs:/var/log/nginx
+    environment:
+      - GIN_MODE=release
+    restart: unless-stopped
+    
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-conf:/etc/nginx/conf.d:ro
+      - ./nginx-certs:/etc/nginx/certs:ro
+      - ./logs:/var/log/nginx
+    depends_on:
+      - nginx-proxy
+    restart: unless-stopped
+    command: ["nginx", "-g", "daemon off;"]

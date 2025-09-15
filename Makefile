@@ -73,19 +73,32 @@ dev-docker:
 dev-docker-down:
 	docker-compose -f docker-compose.dev.yml down
 
-# 仅使用 Docker 构建和运行（无需本地 Go）
-docker-only: docker-build
+# 单容器部署（推荐）
+docker-single: docker-build
 	@echo "创建必要的目录..."
 	@mkdir -p data nginx-conf nginx-certs logs
-	@echo "启动 nginx-proxy 容器..."
+	@echo "启动单容器 nginx-proxy（包含 nginx）..."
 	docker run -d \
-		--name nginx-proxy \
+		--name nginx-proxy-complete \
+		-p 80:80 \
+		-p 443:443 \
 		-p 8080:8080 \
 		-v $(PWD)/data:/app/data \
 		-v $(PWD)/nginx-conf:/etc/nginx/conf.d \
 		-v $(PWD)/nginx-certs:/etc/nginx/certs \
 		$(DOCKER_IMAGE)
-	@echo "nginx-proxy 已启动在 http://localhost:8080"
+	@echo "nginx-proxy 已启动："
+	@echo "  - API: http://localhost:8080"
+	@echo "  - HTTP: http://localhost:80"
+	@echo "  - HTTPS: https://localhost:443"
+
+# 单容器 Docker Compose
+single-compose:
+	@mkdir -p data nginx-conf nginx-certs logs
+	docker-compose -f docker-compose.single.yml up -d
+
+# 仅使用 Docker 构建和运行（无需本地 Go）- 兼容旧版本
+docker-only: docker-single
 
 # 停止并清理 Docker 容器
 docker-clean:
@@ -146,6 +159,35 @@ deploy-staging:
 # 查看当前版本
 version:
 	@echo "Current version: $(shell cat VERSION)"
+
+# 卷管理命令
+# 创建挂载目录
+setup-volumes:
+	@echo "创建挂载目录..."
+	@mkdir -p volumes/data volumes/nginx-conf volumes/nginx-certs volumes/nginx-logs volumes/templates volumes/config
+	@cp config.json volumes/config/ 2>/dev/null || echo "配置文件不存在，跳过复制"
+	@cp -r template/* volumes/templates/ 2>/dev/null || echo "模板目录为空，跳过复制"
+	@echo "挂载目录创建完成！"
+
+# 清理卷数据
+clean-volumes:
+	@echo "清理挂载目录..."
+	@rm -rf volumes/
+	@echo "挂载目录已清理！"
+
+# 备份卷数据
+backup-volumes:
+	@echo "备份卷数据..."
+	@tar -czf nginx-proxy-volumes-backup-$(shell date +%Y%m%d_%H%M%S).tar.gz volumes/
+	@echo "备份完成！"
+
+# 查看卷使用情况
+volume-info:
+	@echo "=== Docker 卷信息 ==="
+	@docker volume ls | grep nginx-proxy || echo "没有找到 nginx-proxy 相关卷"
+	@echo ""
+	@echo "=== 本地挂载目录 ==="
+	@if [ -d "volumes" ]; then du -sh volumes/*; else echo "volumes 目录不存在"; fi
 
 # 构建特定版本的镜像
 build-version:

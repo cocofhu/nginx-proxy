@@ -4,7 +4,7 @@ FROM golang:1.21-alpine AS builder
 WORKDIR /app
 
 # 安装必要的包
-RUN apk add --no-cache git
+RUN apk add --no-cache git gcc musl-dev sqlite-dev
 
 # 复制 go mod 文件
 COPY go.mod go.sum ./
@@ -16,17 +16,11 @@ COPY . .
 # 构建应用
 RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server
 
-# 运行阶段
-FROM alpine:latest
+# 运行阶段 - 基于官方 nginx 镜像
+FROM nginx:alpine
 
-# 安装 nginx 和其他必要的包
-RUN apk --no-cache add nginx ca-certificates sqlite
-
-# 创建必要的目录
-RUN mkdir -p /etc/nginx/conf.d /etc/nginx/certs /var/log/nginx /var/lib/nginx/tmp
-
-# 创建 nginx 用户
-RUN adduser -D -s /bin/sh nginx
+# 安装必要的包
+RUN apk --no-cache add ca-certificates sqlite curl
 
 # 复制构建的二进制文件
 COPY --from=builder /app/main /usr/local/bin/nginx-proxy
@@ -34,18 +28,39 @@ COPY --from=builder /app/main /usr/local/bin/nginx-proxy
 # 复制配置文件和模板
 COPY config.json /app/
 COPY template/ /app/template/
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # 设置工作目录
 WORKDIR /app
 
-# 创建数据目录
-RUN mkdir -p /app/data
+# 创建数据目录和必要的目录
+RUN mkdir -p /app/data /etc/nginx/certs
 
-# 修改配置文件中的路径
+# 修改配置文件中的路径以适应容器环境
 RUN sed -i 's|"./nginx-proxy.db"|"/app/data/nginx-proxy.db"|g' config.json
 
-# 暴露端口
-EXPOSE 8080
+# 创建启动脚本
+RUN echo '#!/bin/sh' > /start.sh && \
+    echo 'nginx-proxy &' >> /start.sh && \
+    echo 'nginx -g "daemon off;"' >> /start.sh && \
+    chmod +x /start.sh
 
-# 启动命令
-CMD ["nginx-proxy"]
+# 定义可挂载的卷
+VOLUME ["/app/data"]
+# 数据库文件存储
+VOLUME ["/etc/nginx/conf.d"]
+# Nginx 配置文件目录
+VOLUME ["/etc/nginx/certs"]
+# SSL 证书存储目录
+VOLUME ["/var/log/nginx"]
+# Nginx 日志目录
+VOLUME ["/app/template"]
+# 模板文件目录（可自定义模板）
+VOLUME ["/app/config.json"]
+# 应用配置文件
+
+# 暴露端口
+EXPOSE 80 443 8080
+
+# 启动命令 - 同时启动 nginx-proxy 和 nginx
+CMD ["/start.sh"]

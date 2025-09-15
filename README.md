@@ -40,20 +40,35 @@ go run cmd/server/main.go
 
 ### Docker 运行
 
-1. **构建镜像**
-```bash
-docker build -t nginx-proxy .
-```
+我们提供了两种 Docker 部署方式：
 
-2. **运行容器**
+#### 方式一：单容器部署（推荐）
+基于官方 nginx 镜像，nginx-proxy 和 nginx 在同一个容器中运行：
+
 ```bash
+# 构建镜像
+docker build -t nginx-proxy .
+
+# 运行容器（包含 nginx-proxy API 和 nginx 服务）
 docker run -d \
   --name nginx-proxy \
+  -p 80:80 \
+  -p 443:443 \
   -p 8080:8080 \
-  -v /etc/nginx/conf.d:/etc/nginx/conf.d \
-  -v /etc/nginx/certs:/etc/nginx/certs \
   -v $(pwd)/data:/app/data \
+  -v $(pwd)/nginx-conf:/etc/nginx/conf.d \
+  -v $(pwd)/nginx-certs:/etc/nginx/certs \
   nginx-proxy
+
+# 或使用单容器 docker-compose
+docker-compose -f docker-compose.single.yml up -d
+```
+
+#### 方式二：多容器部署
+nginx-proxy 和 nginx 分别在不同容器中：
+
+```bash
+docker-compose up -d
 ```
 
 ## API 文档

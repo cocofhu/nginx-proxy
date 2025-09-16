@@ -100,7 +100,15 @@ func main() {
 	if err := handler.RegenerateAllConfigs(); err != nil {
 		log.Printf("Warning: Failed to regenerate configs on startup: %v", err)
 	}
-
+	if err := nginxManager.TestConfig(); err != nil {
+		log.Printf("Warning: Failed to test configs on startup: %v", err)
+	} else {
+		if err = nginxManager.Reload(); err != nil {
+			log.Printf("Warning: Failed to reload configs on startup: %v", err)
+		} else {
+			log.Printf("Success: Nginx reloaded on startup")
+		}
+	}
 	log.Printf("Server starting on port %s", config.Port)
 	log.Fatal(r.Run(":" + config.Port))
 }

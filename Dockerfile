@@ -24,7 +24,7 @@ RUN make build
 FROM openresty/openresty:alpine
 
 # 安装必要工具和 Lua 模块
-RUN apk --no-cache add ca-certificates curl \
+RUN apk --no-cache add ca-certificates curl luarocks \
     && /usr/local/openresty/luajit/bin/luarocks install lua-resty-http \
     && /usr/local/openresty/luajit/bin/luarocks install lua-cjson
 

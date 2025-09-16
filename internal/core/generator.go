@@ -32,9 +32,11 @@ func (g *Generator) loadTemplate() error {
 
 	// 创建带有自定义函数的模板
 	tmpl := template.New("nginx.conf.tpl").Funcs(template.FuncMap{
-		"generateIPCondition": generateIPCondition,
-		"isDefaultRoute":      isDefaultRoute,
-		"escapeRegex":         escapeRegex,
+		"generateIPCondition":     generateIPCondition,
+		"generateHeaderCondition": generateHeaderCondition,
+		"isDefaultRoute":          isDefaultRoute,
+		"hasHeaderCondition":      hasHeaderCondition,
+		"escapeRegex":             escapeRegex,
 	})
 
 	tmpl, err := tmpl.ParseFiles(templatePath)
@@ -136,6 +138,35 @@ func escapeRegex(s string) string {
 		result = strings.ReplaceAll(result, char, "\\"+char)
 	}
 	return result
+}
+
+// generateHeaderCondition 生成HTTP头部条件匹配语句
+func generateHeaderCondition(headers map[string]string) string {
+	if len(headers) == 0 {
+		return ""
+	}
+
+	var conditions []string
+	for key, value := range headers {
+		// 将头部名称转换为nginx变量格式
+		headerVar := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+		headerVar = fmt.Sprintf("http_%s", headerVar)
+
+		// 生成条件语句
+		condition := fmt.Sprintf(`($%s = "%s")`, headerVar, value)
+		conditions = append(conditions, condition)
+	}
+
+	// 使用 AND 逻辑连接多个条件
+	if len(conditions) == 1 {
+		return fmt.Sprintf("if %s", conditions[0])
+	}
+	return fmt.Sprintf("if (%s)", strings.Join(conditions, " and "))
+}
+
+// hasHeaderCondition 检查是否有头部条件
+func hasHeaderCondition(headers map[string]string) bool {
+	return len(headers) > 0
 }
 
 // GenerateConfig 生成单个规则的配置文件

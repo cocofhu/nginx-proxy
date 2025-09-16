@@ -28,8 +28,9 @@ type Location struct {
 
 // Upstream 代表一个上游服务器配置
 type Upstream struct {
-	ConditionIP string `json:"condition_ip"` // CIDR 格式
-	Target      string `json:"target"`       // http://host:port
+	ConditionIP string            `json:"condition_ip"`      // CIDR 格式
+	Target      string            `json:"target"`            // http://host:port
+	Headers     map[string]string `json:"headers,omitempty"` // HTTP头部路由条件
 }
 
 // RuleResponse 用于 API 响应

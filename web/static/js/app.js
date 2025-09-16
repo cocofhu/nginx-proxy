@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeApp() {
     setupEventListeners();
     setupNavigation();
+    bindUpstreamEvents();
 }
 
 // 设置事件监听器
@@ -179,26 +180,51 @@ async function loadProxiesData() {
         const response = await apiCall('/rules');
         const rules = response.rules || [];
         
-        proxiesTable.innerHTML = rules.map(rule => `
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${rule.server_name}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    ${rule.locations.map(loc => loc.upstreams.map(up => up.target).join(', ')).join('<br>')}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                        活跃
-                    </span>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    ${rule.ssl_cert ? '<i class="fas fa-lock text-green-600"></i>' : '<i class="fas fa-unlock text-red-600"></i>'}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button onclick="editRule('${rule.id}')" class="text-indigo-600 hover:text-indigo-900 mr-3">编辑</button>
-                    <button onclick="deleteRule('${rule.id}')" class="text-red-600 hover:text-red-900">删除</button>
-                </td>
-            </tr>
-        `).join('');
+        proxiesTable.innerHTML = rules.map(rule => {
+            // 生成目标地址和路由条件的显示
+            const targetInfo = rule.locations.map(loc => {
+                return loc.upstreams.map(up => {
+                    let info = up.target;
+                    const conditions = [];
+                    
+                    if (up.condition_ip && up.condition_ip !== '0.0.0.0/0') {
+                        conditions.push(`IP: ${up.condition_ip}`);
+                    }
+                    
+                    if (up.headers && Object.keys(up.headers).length > 0) {
+                        const headerStr = Object.entries(up.headers)
+                            .map(([k, v]) => `${k}=${v}`)
+                            .join(', ');
+                        conditions.push(`Headers: ${headerStr}`);
+                    }
+                    
+                    if (conditions.length > 0) {
+                        info += ` <small class="text-gray-400">(${conditions.join('; ')})</small>`;
+                    }
+                    
+                    return info;
+                }).join('<br>');
+            }).join('<br>');
+            
+            return `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${rule.server_name}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${targetInfo}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                            活跃
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${rule.ssl_cert ? '<i class="fas fa-lock text-green-600"></i>' : '<i class="fas fa-unlock text-red-600"></i>'}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button onclick="editRule('${rule.id}')" class="text-indigo-600 hover:text-indigo-900 mr-3">编辑</button>
+                        <button onclick="deleteRule('${rule.id}')" class="text-red-600 hover:text-red-900">删除</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
         
     } catch (error) {
         console.error('Failed to load proxies data:', error);
@@ -219,9 +245,23 @@ function closeAddProxyModal() {
     
     // 重置分流配置为默认状态
     const upstreamContainer = document.getElementById('upstream-configs');
-    upstreamContainer.innerHTML = `
+    upstreamContainer.innerHTML = createDefaultUpstreamConfig();
+    
+    // 重新绑定事件
+    bindUpstreamEvents();
+    
+    // 重置SSL配置
+    const sslCheckbox = document.getElementById('proxy-ssl');
+    const sslConfig = document.getElementById('ssl-config');
+    sslCheckbox.checked = false;
+    sslConfig.classList.add('hidden');
+}
+
+// 创建默认的upstream配置HTML
+function createDefaultUpstreamConfig() {
+    return `
         <div class="upstream-config border border-gray-200 rounded-md p-3">
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-2 gap-2 mb-2">
                 <div>
                     <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
                     <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="0.0.0.0/0">
@@ -231,14 +271,28 @@ function closeAddProxyModal() {
                     <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000">
                 </div>
             </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">HTTP头部路由 (可选)</label>
+                <div class="upstream-headers space-y-1">
+                    <div class="header-pair flex gap-2">
+                        <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
+                        <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
+                        <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
+                    </div>
+                </div>
+            </div>
         </div>
     `;
-    
-    // 重置SSL配置
-    const sslCheckbox = document.getElementById('proxy-ssl');
-    const sslConfig = document.getElementById('ssl-config');
-    sslCheckbox.checked = false;
-    sslConfig.classList.add('hidden');
+}
+
+// 绑定upstream相关事件
+function bindUpstreamEvents() {
+    // 绑定添加头部按钮事件
+    document.querySelectorAll('.add-header-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            addHeaderPair(this.closest('.upstream-headers'));
+        });
+    });
 }
 
 // 添加分流配置
@@ -247,7 +301,7 @@ function addUpstreamConfig() {
     const newConfig = document.createElement('div');
     newConfig.className = 'upstream-config border border-gray-200 rounded-md p-3';
     newConfig.innerHTML = `
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-2 gap-2 mb-2">
             <div>
                 <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
                 <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="192.168.1.0/24">
@@ -255,6 +309,16 @@ function addUpstreamConfig() {
             <div>
                 <label class="block text-xs text-gray-600 mb-1">目标地址</label>
                 <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://internal-server:8080">
+            </div>
+        </div>
+        <div>
+            <label class="block text-xs text-gray-600 mb-1">HTTP头部路由 (可选)</label>
+            <div class="upstream-headers space-y-1">
+                <div class="header-pair flex gap-2">
+                    <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
+                    <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
+                    <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
+                </div>
             </div>
         </div>
         <button type="button" class="remove-upstream mt-2 text-xs text-red-600 hover:text-red-800">移除</button>
@@ -265,7 +329,30 @@ function addUpstreamConfig() {
         newConfig.remove();
     });
     
+    // 添加头部按钮事件
+    newConfig.querySelector('.add-header-btn').addEventListener('click', function() {
+        addHeaderPair(this.closest('.upstream-headers'));
+    });
+    
     container.appendChild(newConfig);
+}
+
+// 添加头部键值对
+function addHeaderPair(headersContainer) {
+    const newHeaderPair = document.createElement('div');
+    newHeaderPair.className = 'header-pair flex gap-2';
+    newHeaderPair.innerHTML = `
+        <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称">
+        <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值">
+        <button type="button" class="remove-header-btn text-red-600 hover:text-red-800 px-2">-</button>
+    `;
+    
+    // 添加移除头部按钮事件
+    newHeaderPair.querySelector('.remove-header-btn').addEventListener('click', function() {
+        newHeaderPair.remove();
+    });
+    
+    headersContainer.appendChild(newHeaderPair);
 }
 
 // 处理添加代理
@@ -286,10 +373,27 @@ async function handleAddProxy(e) {
         const target = element.querySelector('.upstream-target').value.trim();
         
         if (condition && target) {
-            upstreamConfigs.push({
+            const upstream = {
                 condition_ip: condition,
                 target: target
+            };
+            
+            // 收集头部信息
+            const headers = {};
+            const headerPairs = element.querySelectorAll('.header-pair');
+            headerPairs.forEach(pair => {
+                const key = pair.querySelector('.header-key').value.trim();
+                const value = pair.querySelector('.header-value').value.trim();
+                if (key && value) {
+                    headers[key] = value;
+                }
             });
+            
+            if (Object.keys(headers).length > 0) {
+                upstream.headers = headers;
+            }
+            
+            upstreamConfigs.push(upstream);
         }
     });
     
@@ -487,21 +591,42 @@ async function populateEditForm(rule) {
     
     if (firstLocation && firstLocation.upstreams) {
         firstLocation.upstreams.forEach(upstream => {
-            addEditUpstreamConfig(upstream.condition_ip, upstream.target);
+            addEditUpstreamConfig(upstream.condition_ip, upstream.target, upstream.headers || {});
         });
     } else {
         // 如果没有分流配置，添加一个默认的
-        addEditUpstreamConfig('0.0.0.0/0', '');
+        addEditUpstreamConfig('0.0.0.0/0', '', {});
     }
 }
 
 // 添加编辑分流配置
-function addEditUpstreamConfig(condition = '', target = '') {
+function addEditUpstreamConfig(condition = '', target = '', headers = {}) {
     const container = document.getElementById('edit-upstream-configs');
     const newConfig = document.createElement('div');
     newConfig.className = 'upstream-config border border-gray-200 rounded-md p-3';
+    
+    // 生成头部HTML
+    let headersHtml = '';
+    if (Object.keys(headers).length > 0) {
+        headersHtml = Object.entries(headers).map(([key, value]) => `
+            <div class="header-pair flex gap-2">
+                <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称" value="${key}">
+                <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值" value="${value}">
+                <button type="button" class="remove-header-btn text-red-600 hover:text-red-800 px-2">-</button>
+            </div>
+        `).join('');
+    } else {
+        headersHtml = `
+            <div class="header-pair flex gap-2">
+                <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
+                <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
+                <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
+            </div>
+        `;
+    }
+    
     newConfig.innerHTML = `
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-2 gap-2 mb-2">
             <div>
                 <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
                 <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="${condition}">
@@ -511,12 +636,32 @@ function addEditUpstreamConfig(condition = '', target = '') {
                 <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000" value="${target}">
             </div>
         </div>
+        <div>
+            <label class="block text-xs text-gray-600 mb-1">HTTP头部路由 (可选)</label>
+            <div class="upstream-headers space-y-1">
+                ${headersHtml}
+            </div>
+        </div>
         <button type="button" class="remove-upstream mt-2 text-xs text-red-600 hover:text-red-800">移除</button>
     `;
     
     // 添加移除按钮事件
     newConfig.querySelector('.remove-upstream').addEventListener('click', function() {
         newConfig.remove();
+    });
+    
+    // 添加头部相关事件
+    const addHeaderBtn = newConfig.querySelector('.add-header-btn');
+    if (addHeaderBtn) {
+        addHeaderBtn.addEventListener('click', function() {
+            addHeaderPair(this.closest('.upstream-headers'));
+        });
+    }
+    
+    newConfig.querySelectorAll('.remove-header-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            btn.closest('.header-pair').remove();
+        });
     });
     
     container.appendChild(newConfig);
@@ -561,10 +706,27 @@ async function handleEditProxy(e) {
         const target = element.querySelector('.upstream-target').value.trim();
         
         if (condition && target) {
-            upstreamConfigs.push({
+            const upstream = {
                 condition_ip: condition,
                 target: target
+            };
+            
+            // 收集头部信息
+            const headers = {};
+            const headerPairs = element.querySelectorAll('.header-pair');
+            headerPairs.forEach(pair => {
+                const key = pair.querySelector('.header-key').value.trim();
+                const value = pair.querySelector('.header-value').value.trim();
+                if (key && value) {
+                    headers[key] = value;
+                }
             });
+            
+            if (Object.keys(headers).length > 0) {
+                upstream.headers = headers;
+            }
+            
+            upstreamConfigs.push(upstream);
         }
     });
     

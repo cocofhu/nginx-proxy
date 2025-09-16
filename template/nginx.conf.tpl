@@ -21,21 +21,35 @@ server {
     ssl_session_timeout 10m;
     {{- end }}
 
-    {{- range .Locations }}
     location {{ .Path }} {
         {{- if gt (len .Upstreams) 1 }}
-        # 多个上游服务器，使用条件判断进行 IP 分流
+        # 多个上游服务器，使用条件判断进行路由
         set $backend "";
         {{- range .Upstreams }}
-        {{- if not (isDefaultRoute .ConditionIP) }}
-        # 检查 IP 条件: {{ .ConditionIP }}
+        {{- if or (not (isDefaultRoute .ConditionIP)) (hasHeaderCondition .Headers) }}
+        # 路由条件: IP={{ .ConditionIP }}{{if .Headers}}, Headers={{range $k, $v := .Headers}} {{$k}}={{$v}}{{end}}{{end}}
+        {{- if and (not (isDefaultRoute .ConditionIP)) (hasHeaderCondition .Headers) }}
+        # IP 和 头部条件都存在
         {{ generateIPCondition .ConditionIP }} {
+            {{ generateHeaderCondition .Headers }} {
+                set $backend "{{ .Target }}";
+            }
+        }
+        {{- else if not (isDefaultRoute .ConditionIP) }}
+        # 仅 IP 条件
+        {{ generateIPCondition .ConditionIP }} {
+            set $backend "{{ .Target }}";
+        }
+        {{- else if hasHeaderCondition .Headers }}
+        # 仅头部条件
+        {{ generateHeaderCondition .Headers }} {
             set $backend "{{ .Target }}";
         }
         {{- end }}
         {{- end }}
+        {{- end }}
         {{- range .Upstreams }}
-        {{- if isDefaultRoute .ConditionIP }}
+        {{- if and (isDefaultRoute .ConditionIP) (not (hasHeaderCondition .Headers)) }}
         # 默认后端
         if ($backend = "") {
             set $backend "{{ .Target }}";

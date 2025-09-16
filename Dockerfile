@@ -30,12 +30,9 @@ RUN apk --no-cache add ca-certificates curl \
 # 复制构建的二进制文件
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy
 
-# 创建用户和必要的目录
-RUN addgroup -g 101 -S nginx && \
-    adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx && \
-    mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/certs \
-    /var/log/nginx /var/cache/nginx && \
-    chown -R nginx:nginx /var/log/nginx /var/cache/nginx /app
+# 创建必要的目录
+RUN mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/certs \
+    /var/log/nginx /var/cache/nginx
 
 # 复制默认配置和模板
 COPY config.json /app/config/config.json.default
@@ -52,7 +49,7 @@ WORKDIR /app
 
 # 创建启动脚本
 RUN echo '#!/bin/sh' > /start.sh && \
-    echo 'echo "启动 nginx-proxy 服务（纯 Go 版本）..."' >> /start.sh && \
+    echo 'echo "启动 nginx-proxy 服务..."' >> /start.sh && \
     echo '# 检查配置文件' >> /start.sh && \
     echo 'if [ ! -f /app/config/config.json ]; then' >> /start.sh && \
     echo '  echo "复制默认配置文件..."' >> /start.sh && \
@@ -60,10 +57,12 @@ RUN echo '#!/bin/sh' > /start.sh && \
     echo 'fi' >> /start.sh && \
     echo '# 修改数据库路径' >> /start.sh && \
     echo 'sed -i "s|\"./nginx-proxy.db\"|\"./data/nginx-proxy.db\"|g" /app/config/config.json' >> /start.sh && \
+    echo '# 测试 nginx 配置' >> /start.sh && \
+    echo '/usr/local/openresty/nginx/sbin/nginx -t' >> /start.sh && \
     echo '# 启动 nginx-proxy（后台）' >> /start.sh && \
     echo 'nginx-proxy -config=/app/config/config.json &' >> /start.sh && \
     echo '# 启动 OpenResty（前台）' >> /start.sh && \
-    echo '/usr/local/openresty/bin/openresty -g "daemon off;"' >> /start.sh && \
+    echo 'exec /usr/local/openresty/nginx/sbin/nginx -g "daemon off;"' >> /start.sh && \
     chmod +x /start.sh
 
 # 定义卷

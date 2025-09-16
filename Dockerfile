@@ -8,6 +8,10 @@ RUN apk add --no-cache git make
 
 # 复制依赖文件
 COPY go.mod go.sum ./
+
+RUN go env -w GO111MODULE=on
+RUN go env -w GOPROXY=https://goproxy.cn,direct
+
 RUN go mod download
 
 # 复制源代码

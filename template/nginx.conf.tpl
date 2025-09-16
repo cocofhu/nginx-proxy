@@ -21,47 +21,66 @@ server {
     ssl_session_timeout 10m;
     {{- end }}
 
+    {{- range .Locations }}
     location {{ .Path }} {
-        {{- if gt (len .Upstreams) 1 }}
-        # 多个上游服务器，使用条件判断进行路由
-        set $backend "";
+        {{- $hasConditions := false }}
         {{- range .Upstreams }}
         {{- if or (not (isDefaultRoute .ConditionIP)) (hasHeaderCondition .Headers) }}
-        # 路由条件: IP={{ .ConditionIP }}{{if .Headers}}, Headers={{range $k, $v := .Headers}} {{$k}}={{$v}}{{end}}{{end}}
-        {{- if and (not (isDefaultRoute .ConditionIP)) (hasHeaderCondition .Headers) }}
-        # IP 和 头部条件都存在
-        {{ generateIPCondition .ConditionIP }} {
-            {{ generateHeaderCondition .Headers }} {
-                set $backend "{{ .Target }}";
-            }
+        {{- $hasConditions = true }}
+        {{- end }}
+        {{- end }}
+        
+        {{- if $hasConditions }}
+        # 存在路由条件，使用条件判断进行路由
+        set $backend "";
+        {{- range $i, $upstream := .Upstreams }}
+        {{- if or (not (isDefaultRoute $upstream.ConditionIP)) (hasHeaderCondition $upstream.Headers) }}
+        
+        # 路由规则 {{ $i }}: {{ $upstream.Target }}
+        {{- if and (not (isDefaultRoute $upstream.ConditionIP)) (hasHeaderCondition $upstream.Headers) }}
+        # IP + 头部条件组合
+        set $match{{ $i }}_ip 0;
+        set $match{{ $i }}_header 0;
+        {{ generateIPCondition $upstream.ConditionIP }} {
+            set $match{{ $i }}_ip 1;
         }
-        {{- else if not (isDefaultRoute .ConditionIP) }}
+        {{- range $k, $v := $upstream.Headers }}
+        if ($http_{{ headerToNginxVar $k }} = "{{ $v }}") {
+            set $match{{ $i }}_header 1;
+        }
+        {{- end }}
+        if ($match{{ $i }}_ip$match{{ $i }}_header = "11") {
+            set $backend "{{ $upstream.Target }}";
+        }
+        {{- else if not (isDefaultRoute $upstream.ConditionIP) }}
         # 仅 IP 条件
-        {{ generateIPCondition .ConditionIP }} {
-            set $backend "{{ .Target }}";
+        {{ generateIPCondition $upstream.ConditionIP }} {
+            set $backend "{{ $upstream.Target }}";
         }
-        {{- else if hasHeaderCondition .Headers }}
+        {{- else if hasHeaderCondition $upstream.Headers }}
         # 仅头部条件
-        {{ generateHeaderCondition .Headers }} {
-            set $backend "{{ .Target }}";
+        {{- range $k, $v := $upstream.Headers }}
+        if ($http_{{ headerToNginxVar $k }} = "{{ $v }}") {
+            set $backend "{{ $upstream.Target }}";
         }
         {{- end }}
         {{- end }}
         {{- end }}
+        {{- end }}
+        
+        # 默认后端处理
         {{- range .Upstreams }}
         {{- if and (isDefaultRoute .ConditionIP) (not (hasHeaderCondition .Headers)) }}
-        # 默认后端
         if ($backend = "") {
             set $backend "{{ .Target }}";
         }
         {{- end }}
         {{- end }}
 
-        # 动态解析后端域名
         set $upstream $backend;
         proxy_pass $upstream;
         {{- else }}
-        # 单个上游服务器
+        # 单个上游服务器，无路由条件
         set $upstream "{{ (index .Upstreams 0).Target }}";
         proxy_pass $upstream;
         {{- end }}

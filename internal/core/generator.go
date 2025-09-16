@@ -37,6 +37,7 @@ func (g *Generator) loadTemplate() error {
 		"isDefaultRoute":          isDefaultRoute,
 		"hasHeaderCondition":      hasHeaderCondition,
 		"escapeRegex":             escapeRegex,
+		"headerToNginxVar":        headerToNginxVar,
 	})
 
 	tmpl, err := tmpl.ParseFiles(templatePath)
@@ -167,6 +168,12 @@ func generateHeaderCondition(headers map[string]string) string {
 // hasHeaderCondition 检查是否有头部条件
 func hasHeaderCondition(headers map[string]string) bool {
 	return len(headers) > 0
+}
+
+// headerToNginxVar 将HTTP头部名称转换为nginx变量名
+func headerToNginxVar(headerName string) string {
+	// 转换为小写并将连字符替换为下划线
+	return strings.ToLower(strings.ReplaceAll(headerName, "-", "_"))
 }
 
 // GenerateConfig 生成单个规则的配置文件

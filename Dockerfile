@@ -30,10 +30,12 @@ RUN apk --no-cache add ca-certificates curl \
 # 复制构建的二进制文件
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy
 
-# 创建必要的目录
-RUN mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/certs \
+# 创建用户和必要的目录
+RUN addgroup -g 101 -S nginx && \
+    adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx && \
+    mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/certs \
     /var/log/nginx /var/cache/nginx && \
-    chown -R nginx:nginx /var/log/nginx /var/cache/nginx
+    chown -R nginx:nginx /var/log/nginx /var/cache/nginx /app
 
 # 复制默认配置和模板
 COPY config.json /app/config/config.json.default

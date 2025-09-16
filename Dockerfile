@@ -24,9 +24,17 @@ RUN make build
 FROM openresty/openresty:alpine
 
 # 安装必要工具和 Lua 模块
-RUN apk --no-cache add ca-certificates curl luarocks \
-    && /usr/local/openresty/luajit/bin/luarocks install lua-resty-http \
-    && /usr/local/openresty/luajit/bin/luarocks install lua-cjson
+RUN apk --no-cache add ca-certificates curl wget unzip \
+    && mkdir -p /usr/local/openresty/lualib/resty \
+    && cd /tmp \
+    && wget https://github.com/ledgetech/lua-resty-http/archive/master.zip -O lua-resty-http.zip \
+    && unzip lua-resty-http.zip \
+    && cp lua-resty-http-master/lib/resty/http.lua /usr/local/openresty/lualib/resty/ \
+    && wget https://github.com/openresty/lua-cjson/archive/master.zip -O lua-cjson.zip \
+    && unzip lua-cjson.zip \
+    && cd lua-cjson-master \
+    && make && make install \
+    && rm -rf /tmp/*
 
 # 复制构建的二进制文件
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy

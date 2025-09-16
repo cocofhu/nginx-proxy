@@ -23,6 +23,9 @@ server {
 
     {{- range .Locations }}
     location {{ .Path }} {
+        # 定义变量
+        set $backend "{{ (index .Upstreams 0).Target }}";
+        
         # 统一使用 Go 接口进行路由判断
         access_by_lua_block {
             local http = require "resty.http"
@@ -52,10 +55,16 @@ server {
                 if result.target then
                     ngx.var.backend = result.target
                 else
-                    ngx.var.backend = "{{ (index .Upstreams 0).Target }}"
+                    -- 没有匹配的后端，返回 404
+                    ngx.status = 404
+                    ngx.say("404 Not Found")
+                    ngx.exit(404)
                 end
             else
-                ngx.var.backend = "{{ (index .Upstreams 0).Target }}"
+                -- 路由服务调用失败，返回 502
+                ngx.status = 502
+                ngx.say("502 Bad Gateway - Route service unavailable")
+                ngx.exit(502)
             end
         }
 

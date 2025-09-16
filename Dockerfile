@@ -38,8 +38,8 @@ RUN mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/cert
 COPY config.json /app/config/config.json.default
 COPY template/ /app/template/
 
-# 复制优化的 Nginx 配置文件
-COPY nginx-docker.conf /etc/nginx/nginx.conf
+# 复制优化的 Nginx 配置文件到 OpenResty 默认位置
+COPY nginx-docker.conf /usr/local/openresty/nginx/conf/nginx.conf
 
 # 复制静态文件
 COPY web/static/ /app/web/static/

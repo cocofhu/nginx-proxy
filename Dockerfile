@@ -25,8 +25,7 @@ FROM openresty/openresty:alpine-fat
 
 # 安装必要工具和 Lua 模块  
 RUN apk --no-cache add ca-certificates curl \
-    && opm install ledgetech/lua-resty-http \
-    && opm install bungle/lua-cjson
+    && opm install ledgetech/lua-resty-http
 
 # 复制构建的二进制文件
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy

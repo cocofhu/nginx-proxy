@@ -20,21 +20,13 @@ COPY . .
 # 纯 Go 构建，完全禁用 CGO
 RUN make build
 
-# 运行阶段 - 使用 OpenResty 镜像
-FROM openresty/openresty:alpine
+# 运行阶段 - 使用包含开发工具的 OpenResty 镜像
+FROM openresty/openresty:alpine-fat
 
 # 安装必要工具和 Lua 模块
-RUN apk --no-cache add ca-certificates curl wget unzip \
-    && mkdir -p /usr/local/openresty/lualib/resty \
-    && cd /tmp \
-    && wget https://github.com/ledgetech/lua-resty-http/archive/master.zip -O lua-resty-http.zip \
-    && unzip lua-resty-http.zip \
-    && cp lua-resty-http-master/lib/resty/http.lua /usr/local/openresty/lualib/resty/ \
-    && wget https://github.com/openresty/lua-cjson/archive/master.zip -O lua-cjson.zip \
-    && unzip lua-cjson.zip \
-    && cd lua-cjson-master \
-    && make && make install \
-    && rm -rf /tmp/*
+RUN apk --no-cache add ca-certificates curl \
+    && opm install ledgetech/lua-resty-http \
+    && opm install openresty/lua-cjson
 
 # 复制构建的二进制文件
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy

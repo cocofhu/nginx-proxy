@@ -1,6 +1,6 @@
 {
   "port": "8080",
-  "nginx_path": "/usr/sbin/nginx",
+  "nginx_path": "/usr/local/openresty/nginx/sbin/nginx",
   "config_dir": "/etc/nginx/conf.d",
   "cert_dir": "/etc/nginx/certs",
   "database_path": "./nginx-proxy.db",

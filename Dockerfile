@@ -23,10 +23,10 @@ RUN make build
 # 运行阶段 - 使用包含开发工具的 OpenResty 镜像
 FROM openresty/openresty:alpine-fat
 
-# 安装必要工具和 Lua 模块
+# 安装必要工具和 Lua 模块  
 RUN apk --no-cache add ca-certificates curl \
     && opm install ledgetech/lua-resty-http \
-    && opm install openresty/lua-cjson
+    && opm install bungle/lua-cjson
 
 # 复制构建的二进制文件
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy

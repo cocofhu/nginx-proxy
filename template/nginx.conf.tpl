@@ -23,10 +23,10 @@ server {
 
     {{- range .Locations }}
     location {{ .Path }} {
-        # 定义变量
-        set $backend "{{ (index .Upstreams 0).Target }}";
+        # 先定义变量
+        set $backend "";
         
-        # 统一使用 Go 接口进行路由判断
+        # 使用 access_by_lua_block 进行路由判断和错误处理
         access_by_lua_block {
             local http = require "resty.http"
             local cjson = require "cjson"
@@ -39,37 +39,36 @@ server {
                 server_name = ngx.var.server_name
             }
             
-            -- 调用路由判断接口
+            -- 调用路由判断接口，增加重试机制
             local httpc = http.new()
-            local res, err = httpc:request_uri("http://127.0.0.1:8080/api/route", {
+            local res, err
+            
+            res, err = httpc:request_uri("http://127.0.0.1:8080/api/route", {
                 method = "POST",
                 body = cjson.encode(request_data),
                 headers = {
                     ["Content-Type"] = "application/json"
                 },
-                timeout = 1000  -- 1秒超时
+                timeout = 2000  -- 2秒超时
             })
             
             if res and res.status == 200 then
-                local result = cjson.decode(res.body)
-                if result.match then
+                local ok, result = pcall(cjson.decode, res.body)
+                if ok and result and result.match then
                     ngx.var.backend = result.target
                 else
-                    -- 没有匹配的后端，返回 404
                     ngx.status = 404
                     ngx.say("404 Not Found")
                     ngx.exit(404)
                 end
             else
-                -- 路由服务调用失败，返回 502
                 ngx.status = 502
                 ngx.say("502 Bad Gateway - Route service unavailable")
                 ngx.exit(502)
             end
         }
 
-        set $upstream $backend;
-        proxy_pass $upstream;
+        proxy_pass $backend;
 
         # 代理头设置
         proxy_set_header Host $host;

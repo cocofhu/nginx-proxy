@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/patrickmn/go-cache"
 
 	"gorm.io/gorm"
 
@@ -24,6 +26,7 @@ type Handler struct {
 	generator    *core.Generator
 	nginxManager *core.NginxManager
 	certDir      string
+	cache        *cache.Cache
 }
 
 // NewHandler 创建新的 API 处理器
@@ -33,6 +36,7 @@ func NewHandler(database *gorm.DB, generator *core.Generator, nginxManager *core
 		generator:    generator,
 		nginxManager: nginxManager,
 		certDir:      certDir,
+		cache:        cache.New(5*time.Minute, 10*time.Minute), // 5分钟过期，10分钟清理
 	}
 
 	return h
@@ -65,6 +69,19 @@ func (h *Handler) validateSSLConfig(req *CreateRuleRequest) error {
 	}
 
 	return nil
+}
+
+// clearRuleCache 清除指定 server_name 的缓存
+func (h *Handler) clearRuleCache(serverName string) {
+	cacheKey := fmt.Sprintf("rule:%s", serverName)
+	h.cache.Delete(cacheKey)
+	log.Printf("Cleared cache for server_name: %s", serverName)
+}
+
+// clearAllRuleCache 清除所有规则缓存
+func (h *Handler) clearAllRuleCache() {
+	h.cache.Flush()
+	log.Printf("Cleared all rule cache")
 }
 
 // Upstream 上游服务器结构
@@ -106,13 +123,26 @@ func (h *Handler) Route(c *gin.Context) {
 	log.Printf("Route request: path=%s, remote_addr=%s, server_name=%s, headers=%v",
 		req.Path, req.RemoteAddr, req.ServerName, req.Headers)
 
-	// 从数据库查询匹配的规则
+	// 从缓存或数据库查询匹配的规则
 	var rule db.Rule
-	result := h.db.Where("server_name = ?", req.ServerName).First(&rule)
-	if result.Error != nil {
-		log.Printf("No rule found for server_name: %s", req.ServerName)
-		c.JSON(http.StatusOK, RouteResponse{Target: "", Match: false})
-		return
+	cacheKey := fmt.Sprintf("rule:%s", req.ServerName)
+
+	// 先尝试从缓存获取
+	if cached, found := h.cache.Get(cacheKey); found {
+		rule = cached.(db.Rule)
+		log.Printf("Cache hit for server_name: %s", req.ServerName)
+	} else {
+		// 缓存未命中，从数据库查询
+		result := h.db.Where("server_name = ?", req.ServerName).First(&rule)
+		if result.Error != nil {
+			log.Printf("No rule found for server_name: %s", req.ServerName)
+			c.JSON(http.StatusOK, RouteResponse{Target: "", Match: false})
+			return
+		}
+
+		// 存入缓存
+		h.cache.Set(cacheKey, rule, cache.DefaultExpiration)
+		log.Printf("Cache miss, loaded from DB for server_name: %s", req.ServerName)
 	}
 
 	// 解析 locations 配置
@@ -368,6 +398,9 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		return
 	}
 
+	// 清除缓存
+	h.clearRuleCache(rule.ServerName)
+
 	// 重新加载 Nginx
 	if err := h.nginxManager.Reload(); err != nil {
 		log.Printf("Warning: Failed to reload nginx: %v", err)
@@ -415,6 +448,9 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 		return
 	}
 
+	// 保存旧的 server_name 用于清除缓存
+	oldServerName := rule.ServerName
+
 	// 更新规则字段
 	rule.ServerName = req.ServerName
 	rule.SSLCert = req.SSLCert
@@ -446,6 +482,12 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 	if err := h.db.Save(&rule).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// 清除缓存（清除新旧两个 server_name 的缓存）
+	h.clearRuleCache(oldServerName)
+	if oldServerName != rule.ServerName {
+		h.clearRuleCache(rule.ServerName)
 	}
 
 	// 重新加载 Nginx

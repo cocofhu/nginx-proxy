@@ -7,6 +7,7 @@ toolchain go1.24.5
 require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/uuid v1.6.0
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0
 	modernc.org/sqlite v1.39.0

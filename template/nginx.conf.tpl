@@ -52,7 +52,7 @@ server {
             
             if res and res.status == 200 then
                 local result = cjson.decode(res.body)
-                if result.Match then
+                if result.match then
                     ngx.var.backend = result.target
                 else
                     -- 没有匹配的后端，返回 404

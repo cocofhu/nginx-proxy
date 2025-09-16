@@ -339,17 +339,28 @@ function addUpstreamConfig() {
 
 // 添加头部键值对
 function addHeaderPair(headersContainer) {
+    // 先将现有的"+"按钮改为"-"按钮
+    const existingAddBtn = headersContainer.querySelector('.add-header-btn');
+    if (existingAddBtn) {
+        existingAddBtn.textContent = '-';
+        existingAddBtn.className = 'remove-header-btn text-red-600 hover:text-red-800 px-2';
+        existingAddBtn.removeEventListener('click', arguments.callee);
+        existingAddBtn.addEventListener('click', function() {
+            existingAddBtn.closest('.header-pair').remove();
+        });
+    }
+    
     const newHeaderPair = document.createElement('div');
     newHeaderPair.className = 'header-pair flex gap-2';
     newHeaderPair.innerHTML = `
         <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称">
         <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值">
-        <button type="button" class="remove-header-btn text-red-600 hover:text-red-800 px-2">-</button>
+        <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
     `;
     
-    // 添加移除头部按钮事件
-    newHeaderPair.querySelector('.remove-header-btn').addEventListener('click', function() {
-        newHeaderPair.remove();
+    // 添加新的"+"按钮事件
+    newHeaderPair.querySelector('.add-header-btn').addEventListener('click', function() {
+        addHeaderPair(headersContainer);
     });
     
     headersContainer.appendChild(newHeaderPair);
@@ -615,8 +626,20 @@ function addEditUpstreamConfig(condition = '', target = '', headers = {}) {
                 <button type="button" class="remove-header-btn text-red-600 hover:text-red-800 px-2">-</button>
             </div>
         `).join('');
-    } else {
+    }
+    
+    // 如果没有现有的headers，添加一个空的header输入行
+    if (Object.keys(headers).length === 0) {
         headersHtml = `
+            <div class="header-pair flex gap-2">
+                <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
+                <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
+                <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
+            </div>
+        `;
+    } else {
+        // 如果有现有的headers，在最后一个header后添加一个"+"按钮
+        headersHtml += `
             <div class="header-pair flex gap-2">
                 <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
                 <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">

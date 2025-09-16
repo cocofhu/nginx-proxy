@@ -10,11 +10,13 @@
 ## 🔍 问题分析
 
 ### DNS 解析问题
+
 - Nginx 默认不包含 DNS 解析器配置
 - 内网域名 `git.service.arpa` 需要特定的 DNS 服务器才能解析
 - Docker 环境中需要使用 Docker 内置 DNS (127.0.0.11)
 
 ### 日志卡顿问题
+
 - 默认日志配置没有缓冲，每次写入都直接刷盘
 - 高频访问时会导致 I/O 阻塞
 - 日志文件可能存在权限问题
@@ -24,6 +26,7 @@
 ### 方案 1：立即修复（推荐）
 
 1. **使用修复脚本**：
+
 ```bash
 # 运行自动修复脚本
 chmod +x scripts/fix-dns-and-logs.sh
@@ -31,6 +34,7 @@ chmod +x scripts/fix-dns-and-logs.sh
 ```
 
 2. **手动应用 Docker 配置**：
+
 ```bash
 # 备份当前配置
 cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup
@@ -48,6 +52,7 @@ nginx -s reload
 ### 方案 2：DNS 解析的三种解决方式
 
 #### 选项 A：使用 IP 地址（最简单）
+
 ```json
 {
   "condition_ip": "192.168.2.45/32",
@@ -56,7 +61,9 @@ nginx -s reload
 ```
 
 #### 选项 B：配置 DNS 解析器
+
 在 `nginx.conf` 的 `http` 块中添加：
+
 ```nginx
 # Docker 环境
 resolver 127.0.0.11 8.8.8.8 valid=300s;
@@ -66,6 +73,7 @@ resolver 192.168.2.1 8.8.8.8 valid=300s;
 ```
 
 #### 选项 C：使用 hosts 文件
+
 ```bash
 # 在容器中添加 hosts 映射
 echo "192.168.2.100 git.service.arpa" >> /etc/hosts
@@ -74,6 +82,7 @@ echo "192.168.2.100 git.service.arpa" >> /etc/hosts
 ### 方案 3：日志优化配置
 
 在 `nginx.conf` 中优化日志设置：
+
 ```nginx
 # 使用缓冲的访问日志
 access_log /var/log/nginx/access.log main buffer=64k flush=1s;
@@ -85,6 +94,7 @@ error_log /var/log/nginx/error.log warn;
 ## 🧪 测试验证
 
 ### 1. 测试 DNS 解析
+
 ```bash
 # 在 Nginx 容器中测试
 docker exec your-nginx-container nslookup git.service.arpa
@@ -94,6 +104,7 @@ docker exec your-nginx-container dig git.service.arpa
 ```
 
 ### 2. 测试分流配置
+
 ```bash
 # 从指定 IP 测试（如果可能）
 curl -H "Host: fff.com" http://your-server/
@@ -103,6 +114,7 @@ docker exec your-nginx-container tail -f /var/log/nginx/error.log
 ```
 
 ### 3. 测试日志功能
+
 ```bash
 # 实时查看访问日志（应该不再卡顿）
 docker exec your-nginx-container tail -f /var/log/nginx/access.log
@@ -114,6 +126,7 @@ docker exec your-nginx-container ls -la /var/log/nginx/
 ## 📋 完整的配置示例
 
 ### 使用 IP 地址的配置（推荐）
+
 ```bash
 curl -X POST http://localhost:8080/api/rules \
   -H "Content-Type: application/json" \
@@ -137,6 +150,7 @@ curl -X POST http://localhost:8080/api/rules \
 ```
 
 ### 使用域名的配置（需要 DNS 解析）
+
 ```bash
 curl -X POST http://localhost:8080/api/rules \
   -H "Content-Type: application/json" \
@@ -146,6 +160,7 @@ curl -X POST http://localhost:8080/api/rules \
 ## 🔧 Docker 环境特殊配置
 
 ### Dockerfile 优化
+
 ```dockerfile
 # 确保日志目录存在
 RUN mkdir -p /var/log/nginx /var/cache/nginx && \
@@ -156,6 +171,7 @@ COPY nginx-docker.conf /etc/nginx/nginx.conf
 ```
 
 ### docker-compose.yml 配置
+
 ```yaml
 services:
   nginx:
@@ -173,24 +189,31 @@ services:
 ## 🚨 常见错误和解决方案
 
 ### 错误 1：`no resolver defined`
+
 **解决**：在 `nginx.conf` 中添加 `resolver` 指令
 
 ### 错误 2：日志文件权限错误
+
 **解决**：
+
 ```bash
 chown -R nginx:nginx /var/log/nginx
 chmod 755 /var/log/nginx
 ```
 
 ### 错误 3：DNS 解析超时
+
 **解决**：
+
 ```nginx
 resolver 127.0.0.11 valid=300s;
 resolver_timeout 10s;
 ```
 
 ### 错误 4：日志读取卡顿
+
 **解决**：启用日志缓冲
+
 ```nginx
 access_log /var/log/nginx/access.log main buffer=64k flush=1s;
 ```

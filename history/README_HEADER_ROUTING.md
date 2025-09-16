@@ -69,6 +69,7 @@ go build ./cmd/server
 ```
 
 **测试命令:**
+
 ```bash
 # 路由到v1服务
 curl -H "X-API-Version: v1" http://api.example.com/api/v1/users
@@ -151,19 +152,19 @@ curl http://api.example.com/api/v1/users
 ### 添加头部路由
 
 1. **基本配置**
-   - 域名: 输入要代理的域名
-   - 路径: 设置location路径（默认为/）
-   - SSL: 可选择启用HTTPS
+    - 域名: 输入要代理的域名
+    - 路径: 设置location路径（默认为/）
+    - SSL: 可选择启用HTTPS
 
 2. **分流配置**
-   - 来源IP: 设置IP条件（可选，默认0.0.0.0/0）
-   - 目标地址: 后端服务地址
-   - HTTP头部路由: 点击"+"添加头部条件
+    - 来源IP: 设置IP条件（可选，默认0.0.0.0/0）
+    - 目标地址: 后端服务地址
+    - HTTP头部路由: 点击"+"添加头部条件
 
 3. **头部条件**
-   - Header名称: 如`X-API-Version`、`User-Agent`等
-   - Header值: 对应的匹配值
-   - 支持添加多个头部条件
+    - Header名称: 如`X-API-Version`、`User-Agent`等
+    - Header值: 对应的匹配值
+    - 支持添加多个头部条件
 
 ### 管理现有规则
 
@@ -328,6 +329,7 @@ curl -H "User-Agent: Mobile" http://your-domain/mobile/test
 ## 技术支持
 
 如有问题，请查看：
+
 - 项目文档: `examples/HEADER_ROUTING.md`
 - 配置示例: `examples/header-routing-example.json`
 - 测试工具: `examples/test-header-routing.sh`

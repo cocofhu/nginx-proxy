@@ -6,8 +6,8 @@ docker-build:
   stage: build
   services:
     - name: docker:dind
-      entrypoint: ["env", "-u", "DOCKER_HOST"]
-      command: ["dockerd-entrypoint.sh", "--insecure-registry=registry.service.arpa:443"]
+      entrypoint: [ "env", "-u", "DOCKER_HOST" ]
+      command: [ "dockerd-entrypoint.sh", "--insecure-registry=registry.service.arpa:443" ]
   variables:
     # issue https://gitlab.com/gitlab-org/gitlab-runner/-/issues/4566#note_199261985
     DOCKER_REGISTRY: registry.service.arpa:443
@@ -16,7 +16,7 @@ docker-build:
     DOCKER_TLS_CERTDIR: ""
     DOCKER_DRIVER: overlay2
   script:
-    - if [ -n "$CI_COMMIT_TAG" ]; then export VERSION="$CI_COMMIT_TAG"; else export VERSION="v1.0.4-${CI_COMMIT_SHORT_SHA}"; fi
+    - if [ -n "$CI_COMMIT_TAG" ]; then export VERSION="$CI_COMMIT_TAG"; else export VERSION="v1.0.5-${CI_COMMIT_SHORT_SHA}"; fi
     - export DOCKER_IMAGE_NAME="$DOCKER_REGISTRY/nginx-proxy:$VERSION"
     - export DOCKER_IMAGE_LATEST="$DOCKER_REGISTRY/nginx-proxy:latest"
     - export DOCKER_IMAGE_TENCENT="$TENCENT_REGISTRY/cocofhu/nginx-proxy:$VERSION"

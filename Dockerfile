@@ -20,11 +20,13 @@ COPY . .
 # 纯 Go 构建，完全禁用 CGO
 RUN make build
 
-# 运行阶段 - 使用官方 nginx 镜像
-FROM nginx:alpine
+# 运行阶段 - 使用 OpenResty 镜像
+FROM openresty/openresty:alpine
 
-# 安装必要工具
-RUN apk --no-cache add ca-certificates curl
+# 安装必要工具和 Lua 模块
+RUN apk --no-cache add ca-certificates curl \
+    && /usr/local/openresty/luajit/bin/luarocks install lua-resty-http \
+    && /usr/local/openresty/luajit/bin/luarocks install lua-cjson
 
 # 复制构建的二进制文件
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy
@@ -59,8 +61,8 @@ RUN echo '#!/bin/sh' > /start.sh && \
     echo 'sed -i "s|\"./nginx-proxy.db\"|\"./data/nginx-proxy.db\"|g" /app/config/config.json' >> /start.sh && \
     echo '# 启动 nginx-proxy（后台）' >> /start.sh && \
     echo 'nginx-proxy -config=/app/config/config.json &' >> /start.sh && \
-    echo '# 启动 nginx（前台）' >> /start.sh && \
-    echo 'nginx -g "daemon off;"' >> /start.sh && \
+    echo '# 启动 OpenResty（前台）' >> /start.sh && \
+    echo '/usr/local/openresty/bin/openresty -g "daemon off;"' >> /start.sh && \
     chmod +x /start.sh
 
 # 定义卷

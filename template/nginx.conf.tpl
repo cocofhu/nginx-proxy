@@ -23,67 +23,44 @@ server {
 
     {{- range .Locations }}
     location {{ .Path }} {
-        {{- $hasConditions := false }}
-        {{- range .Upstreams }}
-        {{- if or (not (isDefaultRoute .ConditionIP)) (hasHeaderCondition .Headers) }}
-        {{- $hasConditions = true }}
-        {{- end }}
-        {{- end }}
-        
-        {{- if $hasConditions }}
-        # 存在路由条件，使用条件判断进行路由
-        set $backend "";
-        {{- range $i, $upstream := .Upstreams }}
-        {{- if or (not (isDefaultRoute $upstream.ConditionIP)) (hasHeaderCondition $upstream.Headers) }}
-        
-        # 路由规则 {{ $i }}: {{ $upstream.Target }}
-        {{- if and (not (isDefaultRoute $upstream.ConditionIP)) (hasHeaderCondition $upstream.Headers) }}
-        # IP + 头部条件组合
-        set $match{{ $i }}_ip 0;
-        set $match{{ $i }}_header 0;
-        {{ generateIPCondition $upstream.ConditionIP }} {
-            set $match{{ $i }}_ip 1;
+        # 统一使用 Go 接口进行路由判断
+        access_by_lua_block {
+            local http = require "resty.http"
+            local cjson = require "cjson"
+            
+            -- 只传递必要的请求信息，配置由 Go 服务查询
+            local request_data = {
+                path = ngx.var.uri,
+                remote_addr = ngx.var.remote_addr,
+                headers = ngx.req.get_headers(),
+                server_name = ngx.var.server_name
+            }
+            
+            -- 调用路由判断接口
+            local httpc = http.new()
+            local res, err = httpc:request_uri("http://127.0.0.1:8080/api/route", {
+                method = "POST",
+                body = cjson.encode(request_data),
+                headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                timeout = 1000  -- 1秒超时
+            })
+            
+            if res and res.status == 200 then
+                local result = cjson.decode(res.body)
+                if result.target then
+                    ngx.var.backend = result.target
+                else
+                    ngx.var.backend = "{{ (index .Upstreams 0).Target }}"
+                end
+            else
+                ngx.var.backend = "{{ (index .Upstreams 0).Target }}"
+            end
         }
-        {{- range $k, $v := $upstream.Headers }}
-        if ($http_{{ headerToNginxVar $k }} = "{{ $v }}") {
-            set $match{{ $i }}_header 1;
-        }
-        {{- end }}
-        if ($match{{ $i }}_ip$match{{ $i }}_header = "11") {
-            set $backend "{{ $upstream.Target }}";
-        }
-        {{- else if not (isDefaultRoute $upstream.ConditionIP) }}
-        # 仅 IP 条件
-        {{ generateIPCondition $upstream.ConditionIP }} {
-            set $backend "{{ $upstream.Target }}";
-        }
-        {{- else if hasHeaderCondition $upstream.Headers }}
-        # 仅头部条件
-        {{- range $k, $v := $upstream.Headers }}
-        if ($http_{{ headerToNginxVar $k }} = "{{ $v }}") {
-            set $backend "{{ $upstream.Target }}";
-        }
-        {{- end }}
-        {{- end }}
-        {{- end }}
-        {{- end }}
-        
-        # 默认后端处理
-        {{- range .Upstreams }}
-        {{- if and (isDefaultRoute .ConditionIP) (not (hasHeaderCondition .Headers)) }}
-        if ($backend = "") {
-            set $backend "{{ .Target }}";
-        }
-        {{- end }}
-        {{- end }}
 
         set $upstream $backend;
         proxy_pass $upstream;
-        {{- else }}
-        # 单个上游服务器，无路由条件
-        set $upstream "{{ (index .Upstreams 0).Target }}";
-        proxy_pass $upstream;
-        {{- end }}
 
         # 代理头设置
         proxy_set_header Host $host;

@@ -3,8 +3,10 @@ package api
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -62,6 +64,179 @@ func (h *Handler) validateSSLConfig(req *CreateRuleRequest) error {
 	}
 
 	return nil
+}
+
+// Upstream 上游服务器结构
+type Upstream struct {
+	Target      string            `json:"target"`
+	ConditionIP string            `json:"condition_ip"`
+	Headers     map[string]string `json:"headers"`
+}
+
+// RouteRequest 路由请求结构（简化版，配置从数据库查询）
+type RouteRequest struct {
+	Path       string            `json:"path"`
+	RemoteAddr string            `json:"remote_addr"`
+	Headers    map[string]string `json:"headers"`
+	ServerName string            `json:"server_name"`
+}
+
+// RouteResponse 路由响应结构
+type RouteResponse struct {
+	Target string `json:"target"`
+	Match  bool   `json:"match"`
+}
+
+// Route 统一路由接口（供 OpenResty 调用）
+func (h *Handler) Route(c *gin.Context) {
+	var req RouteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("Route request binding error: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+
+	// 验证请求数据
+	if req.Path == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
+		return
+	}
+
+	log.Printf("Route request: path=%s, remote_addr=%s, server_name=%s, headers=%v",
+		req.Path, req.RemoteAddr, req.ServerName, req.Headers)
+
+	// 从数据库查询匹配的规则
+	var rule db.Rule
+	result := h.db.Where("server_name = ?", req.ServerName).First(&rule)
+	if result.Error != nil {
+		log.Printf("No rule found for server_name: %s", req.ServerName)
+		c.JSON(http.StatusOK, RouteResponse{Target: "", Match: false})
+		return
+	}
+
+	// 解析 locations 配置
+	locations, err := rule.GetLocations()
+	if err != nil {
+		log.Printf("Error parsing locations: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Configuration error"})
+		return
+	}
+
+	// 查找匹配的 location 和 upstream
+	for _, location := range locations {
+		if h.matchPath(req.Path, location.Path) {
+			for i, upstream := range location.Upstreams {
+				if h.matchUpstream(req, upstream) {
+					log.Printf("Route matched location=%s, upstream %d: %s",
+						location.Path, i, upstream.Target)
+					c.JSON(http.StatusOK, RouteResponse{
+						Target: upstream.Target,
+						Match:  true,
+					})
+					return
+				}
+			}
+		}
+	}
+
+	// 如果没有匹配，返回空（使用默认）
+	log.Printf("No route matched for path=%s, server_name=%s", req.Path, req.ServerName)
+	c.JSON(http.StatusOK, RouteResponse{Target: "", Match: false})
+}
+
+// matchPath 检查路径是否匹配
+func (h *Handler) matchPath(requestPath, locationPath string) bool {
+	// 简单的路径匹配，可以扩展为更复杂的匹配规则
+	if locationPath == "/" {
+		return true // 根路径匹配所有
+	}
+	return strings.HasPrefix(requestPath, locationPath)
+}
+
+// matchUpstream 检查上游服务器是否匹配
+func (h *Handler) matchUpstream(req RouteRequest, upstream db.Upstream) bool {
+	// 检查 IP 条件
+	if upstream.ConditionIP != "" && !h.matchIP(req.RemoteAddr, upstream.ConditionIP) {
+		log.Printf("IP condition not matched: %s not in %s", req.RemoteAddr, upstream.ConditionIP)
+		return false
+	}
+
+	// 检查头部条件（且关系）
+	if len(upstream.Headers) > 0 && !h.matchHeaders(req.Headers, upstream.Headers) {
+		log.Printf("Header conditions not matched: expected=%v, actual=%v", upstream.Headers, req.Headers)
+		return false
+	}
+
+	return true
+}
+
+// matchIP 检查 IP 是否匹配
+func (h *Handler) matchIP(remoteAddr, conditionIP string) bool {
+	// 空条件或默认路由，匹配所有
+	if conditionIP == "" || conditionIP == "0.0.0.0/0" {
+		return true
+	}
+
+	// 解析客户端 IP
+	clientIP := net.ParseIP(remoteAddr)
+	if clientIP == nil {
+		log.Printf("Warning: Invalid client IP: %s", remoteAddr)
+		return false
+	}
+
+	// 检查是否为 CIDR 格式
+	if strings.Contains(conditionIP, "/") {
+		_, ipNet, err := net.ParseCIDR(conditionIP)
+		if err != nil {
+			log.Printf("Warning: Invalid CIDR format: %s", conditionIP)
+			return false
+		}
+		return ipNet.Contains(clientIP)
+	}
+
+	// 单个 IP 匹配
+	targetIP := net.ParseIP(conditionIP)
+	if targetIP == nil {
+		log.Printf("Warning: Invalid target IP: %s", conditionIP)
+		return false
+	}
+
+	return clientIP.Equal(targetIP)
+}
+
+// matchHeaders 检查头部是否匹配（且关系）
+func (h *Handler) matchHeaders(requestHeaders, expectedHeaders map[string]string) bool {
+	// 如果没有期望的头部条件，直接匹配
+	if len(expectedHeaders) == 0 {
+		return true
+	}
+
+	// 创建大小写不敏感的请求头部映射
+	normalizedRequestHeaders := make(map[string]string)
+	for key, value := range requestHeaders {
+		normalizedRequestHeaders[strings.ToLower(key)] = value
+	}
+
+	// 检查所有期望的头部条件是否都匹配
+	for expectedKey, expectedValue := range expectedHeaders {
+		normalizedKey := strings.ToLower(expectedKey)
+		actualValue, exists := normalizedRequestHeaders[normalizedKey]
+
+		if !exists {
+			log.Printf("Header not found: %s", expectedKey)
+			return false
+		}
+
+		if actualValue != expectedValue {
+			log.Printf("Header value mismatch: %s expected=%s actual=%s",
+				expectedKey, expectedValue, actualValue)
+			return false
+		}
+
+		log.Printf("Header matched: %s=%s", expectedKey, expectedValue)
+	}
+
+	return true
 }
 
 // validateUniqueServerNamePort 验证域名和端口组合的唯一性

@@ -9,6 +9,7 @@
 ### 1. Dockerfile 修复
 
 **添加静态文件复制**：
+
 ```dockerfile
 # 创建必要的目录
 RUN mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/certs
@@ -18,6 +19,7 @@ COPY web/static/ /app/web/static/
 ```
 
 **更新卷定义**：
+
 ```dockerfile
 # 定义卷
 VOLUME ["/app/data", "/etc/nginx/conf.d", "/etc/nginx/certs", "/var/log/nginx", "/app/template", "/app/config", "/app/web/static"]
@@ -26,6 +28,7 @@ VOLUME ["/app/data", "/etc/nginx/conf.d", "/etc/nginx/certs", "/var/log/nginx", 
 ### 2. 路由配置优化
 
 **移除不存在的 favicon.ico 路由**：
+
 ```go
 // 修复前
 r.StaticFile("/favicon.ico", "./web/static/favicon.ico")
@@ -36,6 +39,7 @@ r.StaticFile("/favicon.ico", "./web/static/favicon.ico")
 ### 3. 测试脚本
 
 创建了 `scripts/test-docker.sh` 用于验证 Docker 构建：
+
 - 检查静态文件是否正确复制
 - 测试 Web 界面访问
 - 验证 API 接口功能
@@ -43,12 +47,14 @@ r.StaticFile("/favicon.ico", "./web/static/favicon.ico")
 ## 验证方法
 
 ### 1. 构建测试
+
 ```bash
 # 运行完整测试
 ./scripts/test-docker.sh
 ```
 
 ### 2. 手动验证
+
 ```bash
 # 构建镜像
 docker build -t nginx-proxy:test .
@@ -66,6 +72,7 @@ curl http://localhost:8080/
 ## 文件结构
 
 修复后的容器内文件结构：
+
 ```
 /app/
 ├── web/
@@ -94,6 +101,7 @@ curl http://localhost:8080/
 ## 测试结果
 
 修复后的 Docker 镜像应该能够：
+
 - ✅ 正常访问 Web 管理界面 (http://localhost:8080/)
 - ✅ 加载 JavaScript 和 CSS 资源
 - ✅ 提供完整的代理配置和证书管理功能

@@ -11,10 +11,10 @@ import (
 type Rule struct {
 	ID          string         `json:"id" gorm:"primaryKey"`
 	ServerName  string         `json:"server_name" gorm:"not null"`
-	ListenPorts string         `json:"-" gorm:"column:listen_ports"` // JSON 存储
+	ListenPorts string         `json:"listen_ports" gorm:"column:listen_ports"` // JSON 存储
 	SSLCert     string         `json:"ssl_cert"`
 	SSLKey      string         `json:"ssl_key"`
-	Locations   string         `json:"-" gorm:"column:locations;type:text"` // JSON 存储
+	Locations   string         `json:"locations" gorm:"column:locations;type:text"` // JSON 存储
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`

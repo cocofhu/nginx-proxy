@@ -91,6 +91,9 @@ func main() {
 
 		// 基本健康检查
 		apiGroup.GET("/health", handler.HealthCheck)
+
+		// 统一路由接口（供 OpenResty 调用）
+		apiGroup.POST("/route", handler.Route)
 	}
 
 	// 启动时重新生成所有配置

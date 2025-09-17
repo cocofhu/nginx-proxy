@@ -27,16 +27,18 @@ type Handler struct {
 	nginxManager *core.NginxManager
 	certDir      string
 	cache        *cache.Cache
+	tencentSSL   *core.TencentSSLService
 }
 
 // NewHandler 创建新的 API 处理器
-func NewHandler(database *gorm.DB, generator *core.Generator, nginxManager *core.NginxManager, certDir string) *Handler {
+func NewHandler(database *gorm.DB, generator *core.Generator, nginxManager *core.NginxManager, certDir string, tencentSSL *core.TencentSSLService) *Handler {
 	h := &Handler{
 		db:           database,
 		generator:    generator,
 		nginxManager: nginxManager,
 		certDir:      certDir,
 		cache:        cache.New(5*time.Minute, 10*time.Minute), // 5分钟过期，10分钟清理
+		tencentSSL:   tencentSSL,
 	}
 
 	return h

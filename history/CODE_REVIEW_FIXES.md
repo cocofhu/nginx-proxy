@@ -3,10 +3,12 @@
 ## 🔍 发现的问题
 
 ### 1. **Dockerfile 问题**
+
 - ❌ 使用的是普通 nginx 镜像，不支持 Lua 脚本
 - ❌ 缺少 OpenResty 和必要的 Lua 模块
 
 ### 2. **代码质量问题**
+
 - ❌ `generator.go` 中有未使用的 import (`net`, `strings`)
 - ❌ `handlers.go` 缺少必要的 import (`net`, `strings`)
 - ❌ IP 匹配逻辑过于简单，不支持 CIDR
@@ -16,6 +18,7 @@
 ## ✅ 修复内容
 
 ### 1. **Dockerfile 修复**
+
 ```dockerfile
 # 改为使用 OpenResty 镜像
 FROM openresty/openresty:alpine
@@ -29,6 +32,7 @@ RUN /usr/local/openresty/luajit/bin/luarocks install lua-resty-http \
 ```
 
 ### 2. **generator.go 清理**
+
 - ✅ 移除未使用的 import: `net`, `strings`
 - ✅ 简化模板函数映射
 - ✅ 保持代码简洁
@@ -36,6 +40,7 @@ RUN /usr/local/openresty/luajit/bin/luarocks install lua-resty-http \
 ### 3. **handlers.go 改进**
 
 #### 添加必要的 import
+
 ```go
 import (
     "net"      // 用于 IP 解析和 CIDR 匹配
@@ -44,6 +49,7 @@ import (
 ```
 
 #### 改进 IP 匹配逻辑
+
 ```go
 func (h *Handler) matchIP(remoteAddr, conditionIP string) bool {
     // 支持 CIDR 格式匹配
@@ -62,6 +68,7 @@ func (h *Handler) matchIP(remoteAddr, conditionIP string) bool {
 ```
 
 #### 改进头部匹配逻辑
+
 ```go
 func (h *Handler) matchHeaders(requestHeaders, expectedHeaders map[string]string) bool {
     // 大小写不敏感的头部匹配
@@ -90,6 +97,7 @@ func (h *Handler) matchHeaders(requestHeaders, expectedHeaders map[string]string
 ```
 
 #### 改进路由接口
+
 ```go
 func (h *Handler) Route(c *gin.Context) {
     // 添加请求验证
@@ -121,6 +129,7 @@ func (h *Handler) Route(c *gin.Context) {
 ## 🚀 部署建议
 
 ### 1. 构建和启动
+
 ```bash
 # 构建 Docker 镜像
 docker build -t nginx-proxy-openresty .
@@ -132,6 +141,7 @@ docker run -d -p 80:80 -p 8080:8080 \
 ```
 
 ### 2. 测试路由功能
+
 ```bash
 # 给测试脚本执行权限
 chmod +x test_route_api.sh

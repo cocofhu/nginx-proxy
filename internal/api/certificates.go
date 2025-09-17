@@ -108,14 +108,22 @@ func (h *Handler) UploadCertificateNew(c *gin.Context) {
 		return
 	}
 
+	// 获取证书名称
+	certName := strings.TrimSuffix(certFile.Filename, filepath.Ext(certFile.Filename))
+	if nameValues := form.Value["name"]; len(nameValues) > 0 && nameValues[0] != "" {
+		certName = nameValues[0]
+	}
+
 	// 创建证书记录
 	certificate := db.Certificate{
 		ID:        certID,
-		Name:      strings.TrimSuffix(certFile.Filename, filepath.Ext(certFile.Filename)),
+		Name:      certName,
 		Domain:    certInfo.Domain,
 		CertPath:  certPath,
 		KeyPath:   keyPath,
 		ExpiresAt: certInfo.ExpiresAt,
+		Source:    "upload",
+		Status:    "active", // 设置默认状态为活跃
 	}
 
 	// 保存到数据库

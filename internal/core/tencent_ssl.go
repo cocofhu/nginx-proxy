@@ -507,8 +507,8 @@ func (s *TencentSSLService) UpdateCertificateName(certificateID, newName string)
 	return nil
 }
 
-// deleteTencentCloudCertificate 删除腾讯云端的证书
-func (s *TencentSSLService) deleteTencentCloudCertificate(certificateID string) error {
+// revokeTencentCloudCertificate 删除腾讯云端的证书
+func (s *TencentSSLService) revokeTencentCloudCertificate(certificateID string) error {
 	// 创建删除证书请求
 	request := ssl.NewRevokeCertificateRequest()
 	request.CertificateId = common.StringPtr(certificateID)
@@ -540,7 +540,7 @@ func (s *TencentSSLService) DeleteTencentCertificate(certificateID string) error
 	}
 
 	// 先删除腾讯云端的证书
-	if err := s.deleteTencentCloudCertificate(certificateID); err != nil {
+	if err := s.revokeTencentCloudCertificate(certificateID); err != nil {
 		log.Printf("Warning: Failed to delete certificate from Tencent Cloud: %v", err)
 		// 不阻止本地删除，继续执行
 	}

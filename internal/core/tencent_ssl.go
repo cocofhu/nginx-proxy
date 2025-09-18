@@ -695,3 +695,106 @@ func (s *TencentSSLService) parseCertificateExpiryFromFile(certPath string) (tim
 
 	return s.parseCertificateExpiry(string(certData))
 }
+
+// TencentCertificateInfo 腾讯云证书信息
+type TencentCertificateInfo struct {
+	CertificateID string `json:"certificate_id"`
+	Domain        string `json:"domain"`
+	Alias         string `json:"alias"`
+	Status        string `json:"status"`
+	ExpiresAt     string `json:"expires_at"`
+}
+
+// GetAllTencentCertificates 获取腾讯云所有证书列表
+func (s *TencentSSLService) GetAllTencentCertificates() ([]TencentCertificateInfo, error) {
+	log.Printf("Fetching all certificates from Tencent Cloud...")
+
+	// 创建查询证书列表请求
+	request := ssl.NewDescribeCertificatesRequest()
+
+	// 设置分页参数，一次获取所有证书
+	request.Limit = common.Uint64Ptr(100) // 腾讯云单次最多返回100个
+	request.Offset = common.Uint64Ptr(0)
+
+	var allCertificates []TencentCertificateInfo
+
+	for {
+		// 调用腾讯云API
+		response, err := s.sslClient.DescribeCertificates(request)
+		if err != nil {
+			if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
+				return nil, fmt.Errorf("腾讯云API错误: %s - %s", sdkErr.Code, sdkErr.Message)
+			}
+			return nil, fmt.Errorf("获取证书列表失败: %w", err)
+		}
+
+		if response.Response.Certificates == nil || len(response.Response.Certificates) == 0 {
+			break
+		}
+
+		// 处理当前页的证书
+		for _, cert := range response.Response.Certificates {
+			if cert.CertificateId == nil {
+				continue
+			}
+
+			certInfo := TencentCertificateInfo{
+				CertificateID: *cert.CertificateId,
+			}
+
+			if cert.Domain != nil {
+				certInfo.Domain = *cert.Domain
+			}
+
+			if cert.Alias != nil {
+				certInfo.Alias = *cert.Alias
+			}
+
+			if cert.Status != nil {
+				statusMap := map[uint64]string{
+					0:  "审核中",
+					1:  "已通过",
+					2:  "审核失败",
+					3:  "已过期",
+					4:  "DNS记录添加中",
+					5:  "企业证书，待提交",
+					6:  "订单取消中",
+					7:  "已取消",
+					8:  "已提交资料，待上传确认函",
+					9:  "证书吊销中",
+					10: "已吊销",
+					11: "重颁发中",
+					12: "待上传吊销确认函",
+				}
+				if statusText, exists := statusMap[*cert.Status]; exists {
+					certInfo.Status = statusText
+				} else {
+					certInfo.Status = "未知状态"
+				}
+			}
+
+			if cert.CertEndTime != nil {
+				certInfo.ExpiresAt = *cert.CertEndTime
+			}
+
+			allCertificates = append(allCertificates, certInfo)
+		}
+
+		// 检查是否还有更多证书
+		if response.Response.TotalCount == nil ||
+			uint64(len(allCertificates)) >= *response.Response.TotalCount {
+			break
+		}
+
+		// 更新偏移量获取下一页
+		*request.Offset += *request.Limit
+	}
+
+	log.Printf("Found %d certificates in Tencent Cloud", len(allCertificates))
+	return allCertificates, nil
+}
+
+// RevokeTencentCertificateByID 根据证书ID吊销腾讯云证书
+func (s *TencentSSLService) RevokeTencentCertificateByID(certificateID string) error {
+	return s.revokeTencentCloudCertificate(certificateID)
+}

@@ -108,7 +108,11 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port)
 	log.Printf("Server starting on %s", addr)
 	log.Printf("Web interface: http://%s:%d", config.Server.Host, config.Server.Port)
-
+	if err := handler.RegenerateAllConfigs(); err != nil {
+		log.Printf("Warning: failed to reload nginx conf: %v", err)
+	} else {
+		log.Printf("Server reload config success")
+	}
 	if err := http.ListenAndServe(addr, router); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

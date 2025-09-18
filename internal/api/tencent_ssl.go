@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"nginx-proxy/internal/core"
 
@@ -57,6 +58,13 @@ func (h *Handler) CheckTencentCertificateStatus(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询证书状态失败: " + err.Error()})
 		return
+	}
+
+	if response.Reloaded {
+		log.Printf("reload nginx conf due to certificate updated")
+		if err := h.RegenerateAllConfigs(); err != nil {
+			log.Printf("Warning: failed to reload nginx conf: %v", err)
+		}
 	}
 
 	c.JSON(http.StatusOK, response)

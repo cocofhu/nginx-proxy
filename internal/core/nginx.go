@@ -42,13 +42,3 @@ func (n *NginxManager) Reload() error {
 	}
 	return nil
 }
-
-// GetVersion 获取 Nginx 版本信息
-func (n *NginxManager) GetVersion() (string, error) {
-	cmd := exec.Command(n.nginxPath, "-v")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("failed to get nginx version: %s", err)
-	}
-	return string(output), nil
-}

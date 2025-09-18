@@ -224,6 +224,14 @@ function initModals() {
         });
     }
 
+    // 批量续期按钮
+    const batchRenewBtn = document.getElementById('batch-renew-tencent-certificates-btn');
+    if (batchRenewBtn) {
+        batchRenewBtn.addEventListener('click', function () {
+            batchRenewTencentCertificates();
+        });
+    }
+
     // 关闭模态框按钮
     const closeTencentBtn = document.getElementById('close-tencent-certificate-modal');
     if (closeTencentBtn) {
@@ -283,6 +291,60 @@ function initModals() {
             e.preventDefault();
             console.log('Upload form submitted'); // 调试日志
             uploadCertificate();
+        });
+    }
+
+    // 编辑代理模态框事件
+    const closeEditModalBtn = document.getElementById('close-edit-modal');
+    const cancelEditProxyBtn = document.getElementById('cancel-edit-proxy');
+    if (closeEditModalBtn) {
+        closeEditModalBtn.addEventListener('click', function () {
+            document.getElementById('edit-proxy-modal').classList.add('hidden');
+            document.getElementById('edit-proxy-modal').classList.remove('flex');
+        });
+    }
+    if (cancelEditProxyBtn) {
+        cancelEditProxyBtn.addEventListener('click', function () {
+            document.getElementById('edit-proxy-modal').classList.add('hidden');
+            document.getElementById('edit-proxy-modal').classList.remove('flex');
+        });
+    }
+
+    // 编辑代理表单提交
+    const editProxyForm = document.getElementById('edit-proxy-form');
+    if (editProxyForm) {
+        editProxyForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            updateProxy();
+        });
+    }
+
+    // 编辑模式的SSL复选框事件
+    const editSslCheckbox = document.getElementById('edit-proxy-ssl');
+    if (editSslCheckbox) {
+        editSslCheckbox.addEventListener('change', function () {
+            const sslConfig = document.getElementById('edit-ssl-config');
+            if (this.checked) {
+                sslConfig.classList.remove('hidden');
+                // 当启用SSL时，确保证书列表是最新的
+                if (currentCertificates && currentCertificates.length > 0) {
+                    loadCertificatesForEditSelect();
+                } else {
+                    loadCertificatesData().then(() => {
+                        loadCertificatesForEditSelect();
+                    });
+                }
+            } else {
+                sslConfig.classList.add('hidden');
+            }
+        });
+    }
+
+    // 编辑模式添加分流规则按钮
+    const editAddUpstreamBtn = document.getElementById('edit-add-upstream');
+    if (editAddUpstreamBtn) {
+        editAddUpstreamBtn.addEventListener('click', function () {
+            addEditUpstreamConfig();
         });
     }
 }
@@ -446,12 +508,13 @@ function getCertificateActions(cert) {
     // 获取证书的实际状态
     const actualStatus = getCertificateStatus(cert);
 
-    // 下载按钮 - 只有腾讯云证书才支持下载
+    // 下载按钮 - 只有腾讯云证书且有证书文件才支持下载
     if (cert.source === 'tencent_cloud' && cert.cert_path && cert.cert_path !== '') {
         actions.push(`
             <button onclick="downloadTencentCertificate('${cert.source_id}')" 
-                    class="text-blue-600 hover:text-blue-900 text-xs">
-                <i class="fas fa-download"></i> 下载
+                    class="text-blue-600 hover:text-blue-900 text-xs inline-flex items-center"
+                    title="下载证书文件">
+                <i class="fas fa-download mr-1"></i> 下载
             </button>
         `);
     }
@@ -459,18 +522,32 @@ function getCertificateActions(cert) {
     // 续期按钮 - 只有腾讯云证书才显示续期按钮
     if (cert.source === 'tencent_cloud') {
         if (actualStatus === 'issuing') {
-            // 颁发中状态不显示续期按钮
+            // 颁发中状态显示等待状态
+            actions.push(`
+                <button disabled class="text-gray-400 text-xs cursor-not-allowed inline-flex items-center"
+                        title="证书正在颁发中">
+                    <i class="fas fa-clock mr-1"></i> 颁发中
+                </button>
+            `);
         } else if (cert.status === 'renewing') {
             actions.push(`
-                <button disabled class="text-gray-400 text-xs cursor-not-allowed">
-                    <i class="fas fa-spinner fa-spin"></i> 续期中
+                <button disabled class="text-orange-400 text-xs cursor-not-allowed inline-flex items-center"
+                        title="证书正在续期中">
+                    <i class="fas fa-spinner fa-spin mr-1"></i> 续期中
                 </button>
             `);
         } else {
+            const renewTitle = actualStatus === 'expired' ? '证书已过期，立即续期' : 
+                              actualStatus === 'expiring' ? '证书即将过期，建议续期' : '续期证书';
+            const renewClass = actualStatus === 'expired' ? 'text-red-600 hover:text-red-900' :
+                              actualStatus === 'expiring' ? 'text-orange-600 hover:text-orange-900' :
+                              'text-yellow-600 hover:text-yellow-900';
+            
             actions.push(`
                 <button onclick="renewTencentCertificate('${cert.source_id}')" 
-                        class="text-yellow-600 hover:text-yellow-900 text-xs">
-                    <i class="fas fa-sync-alt"></i> 续期
+                        class="${renewClass} text-xs inline-flex items-center"
+                        title="${renewTitle}">
+                    <i class="fas fa-sync-alt mr-1"></i> 续期
                 </button>
             `);
         }
@@ -480,8 +557,9 @@ function getCertificateActions(cert) {
     if (cert.source === 'tencent_cloud') {
         actions.push(`
             <button onclick="checkTencentCertificateStatus('${cert.source_id}')" 
-                    class="text-green-600 hover:text-green-900 text-xs">
-                <i class="fas fa-check"></i> 检查
+                    class="text-green-600 hover:text-green-900 text-xs inline-flex items-center"
+                    title="检查证书最新状态">
+                <i class="fas fa-sync mr-1"></i> 检查
             </button>
         `);
     }
@@ -490,20 +568,22 @@ function getCertificateActions(cert) {
     if (cert.source === 'tencent_cloud') {
         actions.push(`
             <button onclick="deleteTencentCertificate('${cert.source_id}')" 
-                    class="text-red-600 hover:text-red-900 text-xs">
-                <i class="fas fa-trash"></i> 删除
+                    class="text-red-600 hover:text-red-900 text-xs inline-flex items-center"
+                    title="删除证书">
+                <i class="fas fa-trash mr-1"></i> 删除
             </button>
         `);
     } else {
         actions.push(`
             <button onclick="deleteUploadedCertificate('${cert.id}')" 
-                    class="text-red-600 hover:text-red-900 text-xs">
-                <i class="fas fa-trash"></i> 删除
+                    class="text-red-600 hover:text-red-900 text-xs inline-flex items-center"
+                    title="删除证书">
+                <i class="fas fa-trash mr-1"></i> 删除
             </button>
         `);
     }
 
-    return actions.join('');
+    return actions.join(' ');
 }
 
 // 申请腾讯云证书
@@ -947,10 +1027,386 @@ window.deleteProxy = function (ruleId) {
         });
 };
 
-// 编辑代理（暂时用简单的提示，后续可以实现完整的编辑功能）
+// 编辑代理
 window.editProxy = function (ruleId) {
-    Toast.info('编辑功能正在开发中，请先删除后重新创建');
+    // 使用单个代理配置获取接口
+    fetch(`/api/rules/${ruleId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                Toast.error('获取代理配置失败: ' + data.error);
+                return;
+            }
+            
+            // 检查返回数据的结构
+            const rule = data.rule || data;
+            
+            if (!rule || !rule.id) {
+                Toast.error('返回的代理配置数据格式不正确');
+                return;
+            }
+            
+            populateEditForm(rule);
+            
+            // 显示编辑模态框
+            document.getElementById('edit-proxy-modal').classList.remove('hidden');
+            document.getElementById('edit-proxy-modal').classList.add('flex');
+        })
+        .catch(error => {
+            console.error('Error fetching rule:', error);
+            Toast.error('获取代理配置失败: ' + error.message);
+        });
 };
+
+// 填充编辑表单
+function populateEditForm(rule) {
+    try {
+        // 填充基本信息
+        document.getElementById('edit-proxy-id').value = rule.id || '';
+        document.getElementById('edit-proxy-domain').value = rule.server_name || '';
+        
+        // 填充路径（从第一个location获取）
+        const firstLocation = rule.locations && rule.locations.length > 0 ? rule.locations[0] : null;
+        document.getElementById('edit-proxy-path').value = firstLocation ? (firstLocation.path || '/') : '/';
+    
+    // 填充SSL配置
+    const hasSSL = rule.ssl_cert && rule.ssl_key;
+    document.getElementById('edit-proxy-ssl').checked = hasSSL;
+    
+    if (hasSSL) {
+        document.getElementById('edit-ssl-config').classList.remove('hidden');
+        // 检查是否同时监听80端口（HTTP重定向）
+        const hasHttpPort = rule.listen_ports && rule.listen_ports.includes(80);
+        document.getElementById('edit-proxy-http-redirect').checked = hasHttpPort;
+        
+        // 加载证书选项并选中当前证书
+        loadCertificatesData().then(() => {
+            loadCertificatesForEditSelect();
+            // 尝试匹配当前使用的证书
+            const currentCert = currentCertificates.find(cert => 
+                cert.cert_path === rule.ssl_cert && cert.key_path === rule.ssl_key
+            );
+            if (currentCert) {
+                const certId = currentCert.source === 'upload' ? currentCert.id : currentCert.source_id;
+                document.getElementById('edit-proxy-certificate').value = certId;
+            }
+        });
+    } else {
+        document.getElementById('edit-ssl-config').classList.add('hidden');
+    }
+    
+        // 填充分流配置
+        populateEditUpstreamConfigs(firstLocation ? firstLocation.upstreams : []);
+        
+    } catch (error) {
+        console.error('Error populating edit form:', error);
+        Toast.error('填充编辑表单失败: ' + error.message);
+    }
+}
+
+// 填充编辑模式的分流配置
+function populateEditUpstreamConfigs(upstreams) {
+    const container = document.getElementById('edit-upstream-configs');
+    container.innerHTML = '';
+    
+    if (!upstreams || upstreams.length === 0) {
+        // 如果没有分流配置，添加一个默认的
+        upstreams = [{
+            target: '',
+            condition_ip: '0.0.0.0/0',
+            headers: {}
+        }];
+    }
+    
+    upstreams.forEach((upstream, index) => {
+        const upstreamDiv = document.createElement('div');
+        upstreamDiv.className = 'upstream-config border border-gray-200 rounded-md p-3';
+        
+        // 构建头部配置HTML
+        let headersHtml = '';
+        const headers = upstream.headers || {};
+        const headerKeys = Object.keys(headers);
+        
+        if (headerKeys.length === 0) {
+            // 如果没有头部配置，添加一个空的输入框
+            headersHtml = `
+                <div class="header-pair flex gap-2">
+                    <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
+                    <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
+                    <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
+                </div>
+            `;
+        } else {
+            headerKeys.forEach((key, headerIndex) => {
+                const isFirst = headerIndex === 0;
+                headersHtml += `
+                    <div class="header-pair flex gap-2">
+                        <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称" value="${key}">
+                        <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值" value="${headers[key]}">
+                        <button type="button" class="${isFirst ? 'add-header-btn text-green-600 hover:text-green-800' : 'remove-header-btn text-red-600 hover:text-red-800'} px-2">${isFirst ? '+' : '-'}</button>
+                    </div>
+                `;
+            });
+        }
+        
+        upstreamDiv.innerHTML = `
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
+                    <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="${upstream.condition_ip || '0.0.0.0/0'}">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">目标地址</label>
+                    <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000" value="${upstream.target || ''}">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">HTTP头部路由 (可选)</label>
+                <div class="upstream-headers space-y-1">
+                    ${headersHtml}
+                </div>
+            </div>
+            ${index > 0 ? '<div class="mt-2"><button type="button" class="remove-upstream text-red-600 hover:text-red-800 text-xs">- 删除此规则</button></div>' : ''}
+        `;
+        
+        container.appendChild(upstreamDiv);
+    });
+    
+    // 绑定编辑模式的事件
+    bindEditUpstreamEvents();
+}
+
+// 加载证书选项到编辑表单
+function loadCertificatesForEditSelect() {
+    const select = document.getElementById('edit-proxy-certificate');
+    if (!select) {
+        console.error('Edit certificate select element not found');
+        return;
+    }
+
+    // 清空现有选项
+    select.innerHTML = '<option value="">选择证书...</option>';
+
+    // 使用已加载的证书列表
+    if (currentCertificates && currentCertificates.length > 0) {
+        let validCertCount = 0;
+        currentCertificates.forEach(cert => {
+            // 只显示有效的证书（有证书文件路径的）
+            if (cert.cert_path && cert.key_path && cert.cert_path !== '') {
+                const option = document.createElement('option');
+                option.value = cert.source === 'upload' ? cert.id : cert.source_id;
+                option.textContent = `${cert.name || cert.domain} (${cert.domain})`;
+                select.appendChild(option);
+                validCertCount++;
+            }
+        });
+
+        if (validCertCount === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = '暂无可用证书';
+            option.disabled = true;
+            select.appendChild(option);
+        }
+    } else {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = '暂无证书，请先上传或申请证书';
+        option.disabled = true;
+        select.appendChild(option);
+    }
+}
+
+// 添加编辑模式的分流配置
+function addEditUpstreamConfig() {
+    const container = document.getElementById('edit-upstream-configs');
+    const newConfig = document.createElement('div');
+    newConfig.className = 'upstream-config border border-gray-200 rounded-md p-3';
+    newConfig.innerHTML = `
+        <div class="grid grid-cols-2 gap-2 mb-2">
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
+                <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="0.0.0.0/0">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">目标地址</label>
+                <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000">
+            </div>
+        </div>
+        <div>
+            <label class="block text-xs text-gray-600 mb-1">HTTP头部路由 (可选)</label>
+            <div class="upstream-headers space-y-1">
+                <div class="header-pair flex gap-2">
+                    <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
+                    <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
+                    <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
+                </div>
+            </div>
+        </div>
+        <div class="mt-2">
+            <button type="button" class="remove-upstream text-red-600 hover:text-red-800 text-xs">- 删除此规则</button>
+        </div>
+    `;
+
+    container.appendChild(newConfig);
+    bindEditUpstreamEvents();
+}
+
+// 绑定编辑模式分流配置事件
+function bindEditUpstreamEvents() {
+    // 添加头部按钮事件
+    document.querySelectorAll('#edit-upstream-configs .add-header-btn').forEach(btn => {
+        btn.onclick = function () {
+            const headersContainer = this.closest('.upstream-headers');
+            const newHeaderPair = document.createElement('div');
+            newHeaderPair.className = 'header-pair flex gap-2';
+            newHeaderPair.innerHTML = `
+                <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称">
+                <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值">
+                <button type="button" class="remove-header-btn text-red-600 hover:text-red-800 px-2">-</button>
+            `;
+            headersContainer.appendChild(newHeaderPair);
+            bindEditUpstreamEvents();
+        };
+    });
+
+    // 删除头部按钮事件
+    document.querySelectorAll('#edit-upstream-configs .remove-header-btn').forEach(btn => {
+        btn.onclick = function () {
+            this.closest('.header-pair').remove();
+        };
+    });
+
+    // 删除分流规则按钮事件
+    document.querySelectorAll('#edit-upstream-configs .remove-upstream').forEach(btn => {
+        btn.onclick = function () {
+            this.closest('.upstream-config').remove();
+        };
+    });
+}
+
+// 更新代理配置
+function updateProxy() {
+    const ruleId = document.getElementById('edit-proxy-id').value;
+    const domain = document.getElementById('edit-proxy-domain').value.trim();
+    const path = document.getElementById('edit-proxy-path').value.trim() || '/';
+    const sslEnabled = document.getElementById('edit-proxy-ssl').checked;
+    const httpRedirect = document.getElementById('edit-proxy-http-redirect').checked;
+    const certificateId = document.getElementById('edit-proxy-certificate').value;
+
+    if (!domain) {
+        Toast.warning('请输入域名');
+        return;
+    }
+
+    // 收集分流配置
+    const upstreamConfigs = [];
+    const upstreamElements = document.querySelectorAll('#edit-upstream-configs .upstream-config');
+
+    upstreamElements.forEach(element => {
+        const condition = element.querySelector('.upstream-condition').value.trim();
+        const target = element.querySelector('.upstream-target').value.trim();
+
+        if (!target) {
+            Toast.warning('请填写目标地址');
+            return;
+        }
+
+        // 收集头部条件
+        const headers = {};
+        const headerPairs = element.querySelectorAll('.header-pair');
+        headerPairs.forEach(pair => {
+            const key = pair.querySelector('.header-key').value.trim();
+            const value = pair.querySelector('.header-value').value.trim();
+            if (key && value) {
+                headers[key] = value;
+            }
+        });
+
+        upstreamConfigs.push({
+            target: target,
+            condition_ip: condition || '0.0.0.0/0',
+            headers: headers
+        });
+    });
+
+    if (upstreamConfigs.length === 0) {
+        Toast.warning('请至少配置一个分流规则');
+        return;
+    }
+
+    // 构建请求数据
+    let listenPorts = [80]; // 默认启用HTTP 80
+
+    if (sslEnabled) {
+        listenPorts.push(443); // 启用HTTPS 443
+        if (!httpRedirect) {
+            // 如果不启用HTTP重定向，则只使用HTTPS端口
+            listenPorts = [443];
+        }
+    }
+
+    const requestData = {
+        server_name: domain,
+        listen_ports: listenPorts,
+        locations: [{
+            path: path,
+            upstreams: upstreamConfigs
+        }]
+    };
+
+    // 如果启用SSL且选择了证书，添加证书配置
+    if (sslEnabled && certificateId) {
+        // 从当前证书列表中找到对应的证书
+        const selectedCert = currentCertificates.find(cert =>
+            (cert.source === 'upload' ? cert.id : cert.source_id) === certificateId
+        );
+
+        if (selectedCert) {
+            requestData.ssl_cert = selectedCert.cert_path;
+            requestData.ssl_key = selectedCert.key_path;
+        }
+    }
+
+    const submitBtn = document.querySelector('#edit-proxy-form button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+    submitBtn.disabled = true;
+
+    fetch(`/api/rules/${ruleId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('更新代理失败: ' + data.error);
+            } else {
+                Toast.success('代理更新成功');
+                // 关闭模态框
+                document.getElementById('edit-proxy-modal').classList.add('hidden');
+                document.getElementById('edit-proxy-modal').classList.remove('flex');
+                // 重新加载代理列表
+                loadProxies();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('更新代理失败');
+        })
+        .finally(() => {
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        });
+}
 
 // 初始化时绑定分流配置事件
 document.addEventListener('DOMContentLoaded', function () {
@@ -985,7 +1441,13 @@ window.deleteUploadedCertificate = function (certificateId) {
 
 // 续期腾讯云证书
 window.renewTencentCertificate = function (certificateId) {
-    if (!confirm('确定要续期此证书吗？续期过程可能需要一些时间。')) {
+    // 找到对应的证书信息
+    const cert = currentCertificates.find(c => 
+        c.source === 'tencent_cloud' && c.source_id === certificateId
+    );
+    const certName = cert ? (cert.name || cert.domain) : certificateId;
+
+    if (!confirm(`确定要续期证书 "${certName}" 吗？\n\n续期过程可能需要一些时间，系统会自动申请新证书并在完成后替换当前证书。`)) {
         return;
     }
 
@@ -1003,13 +1465,13 @@ window.renewTencentCertificate = function (certificateId) {
             if (data.error) {
                 Toast.error('续期证书失败: ' + data.error);
             } else {
-                Toast.success('证书续期已开始，新证书ID: ' + data.new_cert_id + '。请定期检查状态，续期完成后会自动切换。');
+                Toast.success(`证书 "${certName}" 续期已开始！\n新证书ID: ${data.new_cert_id}\n\n请定期检查状态，续期完成后会自动切换。`, 6000);
                 loadTencentCertificates(); // 重新加载证书列表
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            Toast.error('续期证书失败');
+            Toast.error('续期证书失败: ' + error.message);
         })
         .finally(() => {
             // 恢复按钮状态
@@ -1091,14 +1553,42 @@ window.checkTencentCertificateStatus = function (certificateId) {
 
 // 下载腾讯云证书
 window.downloadTencentCertificate = function (certificateId) {
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 下载中...';
+    button.disabled = true;
+
     fetch(`/api/certificates/tencent/${certificateId}/download`, {
         method: 'POST'
     })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                Toast.error('下载证书失败: ' + data.error);
+        .then(response => {
+            if (response.ok) {
+                // 如果返回的是文件流，直接下载
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/zip')) {
+                    return response.blob().then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `certificate-${certificateId}.zip`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        Toast.success('证书下载成功');
+                        return { success: true };
+                    });
+                } else {
+                    return response.json();
+                }
             } else {
+                return response.json();
+            }
+        })
+        .then(data => {
+            if (data && data.error) {
+                Toast.error('下载证书失败: ' + data.error);
+            } else if (data && !data.success) {
                 Toast.success('证书下载成功');
                 loadTencentCertificates();
             }
@@ -1106,6 +1596,10 @@ window.downloadTencentCertificate = function (certificateId) {
         .catch(error => {
             console.error('Error:', error);
             Toast.error('下载证书失败');
+        })
+        .finally(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
         });
 };
 
@@ -1132,6 +1626,80 @@ window.deleteTencentCertificate = function (certificateId) {
             Toast.error('删除证书失败');
         });
 };
+
+// 批量续期腾讯云证书
+function batchRenewTencentCertificates() {
+    if (!currentCertificates || currentCertificates.length === 0) {
+        Toast.warning('没有可续期的证书');
+        return;
+    }
+
+    // 筛选出需要续期的腾讯云证书（即将过期或已过期的）
+    const renewableCerts = currentCertificates.filter(cert => {
+        if (cert.source !== 'tencent_cloud') return false;
+        
+        const status = getCertificateStatus(cert);
+        return status === 'expired' || status === 'expiring';
+    });
+
+    if (renewableCerts.length === 0) {
+        Toast.info('没有需要续期的腾讯云证书');
+        return;
+    }
+
+    const certNames = renewableCerts.map(cert => cert.name || cert.domain).join('、');
+    if (!confirm(`确定要批量续期以下 ${renewableCerts.length} 个证书吗？\n\n${certNames}\n\n续期过程可能需要一些时间。`)) {
+        return;
+    }
+
+    const button = document.getElementById('batch-renew-tencent-certificates-btn');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 批量续期中...';
+    button.disabled = true;
+
+    let successCount = 0;
+    let failCount = 0;
+    let completedCount = 0;
+
+    // 并发续期所有证书
+    const renewPromises = renewableCerts.map(cert => {
+        return fetch(`/api/certificates/tencent/${cert.source_id}/renew`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            completedCount++;
+            if (data.error) {
+                failCount++;
+                console.error(`续期证书 ${cert.name || cert.domain} 失败:`, data.error);
+            } else {
+                successCount++;
+                console.log(`续期证书 ${cert.name || cert.domain} 成功，新证书ID: ${data.new_cert_id}`);
+            }
+        })
+        .catch(error => {
+            completedCount++;
+            failCount++;
+            console.error(`续期证书 ${cert.name || cert.domain} 失败:`, error);
+        });
+    });
+
+    Promise.all(renewPromises).finally(() => {
+        button.innerHTML = originalText;
+        button.disabled = false;
+
+        if (successCount > 0 && failCount === 0) {
+            Toast.success(`批量续期完成！成功续期 ${successCount} 个证书。`);
+        } else if (successCount > 0 && failCount > 0) {
+            Toast.warning(`批量续期完成！成功 ${successCount} 个，失败 ${failCount} 个。`);
+        } else {
+            Toast.error(`批量续期失败！所有 ${failCount} 个证书续期都失败了。`);
+        }
+
+        // 重新加载证书列表
+        loadTencentCertificates();
+    });
+}
 
 // 上传证书
 function uploadCertificate() {

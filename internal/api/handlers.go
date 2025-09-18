@@ -559,10 +559,18 @@ func (h *Handler) RegenerateAllConfigs() error {
 	}
 
 	for _, rule := range rules {
+		if err := h.generator.DeleteConfig(rule.ID); err != nil {
+			log.Printf("Failed to delete config for rule %s: %v", rule.ID, err)
+		}
 		if err := h.generator.GenerateConfig(&rule); err != nil {
 			log.Printf("Failed to regenerate config for rule %s: %v", rule.ID, err)
 		}
 	}
 
+	if err := h.nginxManager.TestConfig(); err != nil {
+		log.Printf("Failed to test config for rule %v", err)
+	} else if err := h.nginxManager.Reload(); err != nil {
+		log.Printf("Warning: Failed to reload nginx: %v", err)
+	}
 	return nil
 }

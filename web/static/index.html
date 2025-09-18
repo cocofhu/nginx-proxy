@@ -467,45 +467,18 @@
                             80端口（自动重定向到HTTPS）</label>
                     </div>
                 </div>
-                +++++++ REPLACE
+                <div class="flex justify-end space-x-4 pt-4">
+                    <button type="button" id="cancel-edit-proxy"
+                            class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-md">
+                        取消
+                    </button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
+                        更新
+                    </button>
+                </div>
+            </form>
         </div>
-        </replace_in_file>
-
-        <text-content>
-            现在让我修改JavaScript代码，更新创建代理的逻辑以支持这个新选项：
-        </text-content>
-
-        <tool-calls>
-
-            <replace_in_file id="mf0jdbqrgkngfiqz7n2n1bq3jqwba">
-                <path>web/static/js/app.js</path>
-                <diff>------- SEARCH
-                    // 创建代理
-                    function createProxy() {
-                    const domain = document.getElementById('proxy-domain').value.trim();
-                    const path = document.getElementById('proxy-path').value.trim() || '/';
-                    const sslEnabled = document.getElementById('proxy-ssl').checked;
-                    const certificateId = document.getElementById('proxy-certificate').value;
-                    =======
-                    // 创建代理
-                    function createProxy() {
-                    const domain = document.getElementById('proxy-domain').value.trim();
-                    const path = document.getElementById('proxy-path').value.trim() || '/';
-                    const sslEnabled = document.getElementById('proxy-ssl').checked;
-                    const httpRedirect = document.getElementById('proxy-http-redirect').checked;
-                    const certificateId = document.getElementById('proxy-certificate').value;
-                    <div class="flex justify-end space-x-4 pt-4">
-                        <button type="button" id="cancel-edit-proxy"
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-md">
-                            取消
-                        </button>
-                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
-                            更新
-                        </button>
-                    </div>
-                    </form>
     </div>
-</div>
 </div>
 
 <!-- 上传证书模态框 -->

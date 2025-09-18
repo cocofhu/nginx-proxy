@@ -77,9 +77,6 @@ func NewTencentSSLService(config *TencentCloudConfig, database *gorm.DB, certDir
 		certDir:   certDir,
 	}
 
-	// 启动定时检查续期状态的后台任务
-	go service.startRenewalStatusChecker()
-
 	return service
 }
 
@@ -265,52 +262,7 @@ func (s *TencentSSLService) DownloadCertificate(certificateID string) error {
 	if err := s.db.First(&certificate, "source_id = ? AND source = ?", certificateID, "tencent_cloud").Error; err != nil {
 		return fmt.Errorf("certificate not found: %w", err)
 	}
-
-	// 确保证书目录存在
-	if err := os.MkdirAll(s.certDir, 0755); err != nil {
-		return fmt.Errorf("failed to create cert directory: %w", err)
-	}
-
-	// 调用腾讯云API下载证书
-	request := ssl.NewDownloadCertificateRequest()
-	request.CertificateId = common.StringPtr(certificateID)
-
-	response, err := s.sslClient.DownloadCertificate(request)
-	if err != nil {
-		if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
-			return fmt.Errorf("腾讯云API错误: %s - %s", sdkErr.Code, sdkErr.Message)
-		}
-		return fmt.Errorf("下载证书失败: %w", err)
-	}
-
-	if response.Response.Content == nil {
-		return fmt.Errorf("证书内容为空")
-	}
-
-	// 生成证书文件路径
-	certPath := filepath.Join(s.certDir, certificateID+".crt")
-	keyPath := filepath.Join(s.certDir, certificateID+".key")
-
-	// 从ZIP格式的证书包中提取证书和私钥
-	if err := s.extractCertificateFromZip(*response.Response.Content, certPath, keyPath); err != nil {
-		return fmt.Errorf("提取证书文件失败: %w", err)
-	}
-
-	// 更新数据库记录
-	certificate.CertPath = certPath
-	certificate.KeyPath = keyPath
-
-	// 解析证书过期时间
-	if expTime, err := s.parseCertificateExpiryFromFile(certPath); err == nil {
-		certificate.ExpiresAt = expTime
-	}
-
-	if err := s.db.Save(&certificate).Error; err != nil {
-		return fmt.Errorf("failed to update certificate record: %w", err)
-	}
-
-	log.Printf("Certificate downloaded successfully: %s", certificateID)
-	return nil
+	return s.downloadCertificateFromAPI(certificateID)
 }
 
 // RenewTencentCertificate 续期腾讯云证书（在原记录上更新，不创建新记录）
@@ -381,103 +333,6 @@ func (s *TencentSSLService) RenewTencentCertificate(oldCertificateID string) (*R
 
 	log.Printf("Certificate renewal initiated: cert=%s, new_cert_id=%s", oldCertificateID, newCertID)
 	return renewResponse, nil
-}
-
-// CheckCertificateRenewalNeeded 检查证书是否需要续期
-func (s *TencentSSLService) CheckCertificateRenewalNeeded(certificateID string, daysBeforeExpiry int) (bool, error) {
-	var certificate db.Certificate
-	if err := s.db.First(&certificate, "source_id = ? AND source = ?", certificateID, "tencent_cloud").Error; err != nil {
-		return false, fmt.Errorf("certificate not found: %w", err)
-	}
-
-	// 如果过期时间为零值，说明证书还未签发完成
-	if certificate.ExpiresAt.IsZero() {
-		return false, nil
-	}
-
-	// 计算距离过期的天数
-	daysUntilExpiry := int(time.Until(certificate.ExpiresAt).Hours() / 24)
-
-	// 如果距离过期时间小于指定天数，则需要续期
-	return daysUntilExpiry <= daysBeforeExpiry, nil
-}
-
-// AutoRenewCertificates 自动续期即将过期的证书
-func (s *TencentSSLService) AutoRenewCertificates(daysBeforeExpiry int) error {
-	// 获取所有腾讯云证书
-	var certificates []db.Certificate
-	if err := s.db.Where("source = ?", "tencent_cloud").Find(&certificates).Error; err != nil {
-		return fmt.Errorf("failed to get certificates: %w", err)
-	}
-
-	renewedCount := 0
-	for _, cert := range certificates {
-		// 检查是否需要续期
-		needRenewal, err := s.CheckCertificateRenewalNeeded(cert.SourceID, daysBeforeExpiry)
-		if err != nil {
-			log.Printf("Error checking renewal for certificate %s: %v", cert.SourceID, err)
-			continue
-		}
-
-		if needRenewal {
-			// 执行续期
-			_, err := s.RenewTencentCertificate(cert.SourceID)
-			if err != nil {
-				log.Printf("Failed to renew certificate %s: %v", cert.SourceID, err)
-				continue
-			}
-			renewedCount++
-			log.Printf("Auto-renewed certificate: %s (domain: %s)", cert.SourceID, cert.Domain)
-		}
-	}
-
-	log.Printf("Auto-renewal completed: %d certificates renewed", renewedCount)
-	return nil
-}
-
-// BatchRenewCertificates 批量续期证书（可选择是否有时间限制）
-func (s *TencentSSLService) BatchRenewCertificates(daysBeforeExpiry *int) (int, int, error) {
-	// 获取所有腾讯云证书
-	var certificates []db.Certificate
-	if err := s.db.Where("source = ?", "tencent_cloud").Find(&certificates).Error; err != nil {
-		return 0, 0, fmt.Errorf("failed to get certificates: %w", err)
-	}
-
-	renewedCount := 0
-	totalCount := len(certificates)
-
-	for _, cert := range certificates {
-		shouldRenew := true
-
-		// 如果指定了天数限制，则检查是否需要续期
-		if daysBeforeExpiry != nil {
-			needRenewal, err := s.CheckCertificateRenewalNeeded(cert.SourceID, *daysBeforeExpiry)
-			if err != nil {
-				log.Printf("Error checking renewal for certificate %s: %v", cert.SourceID, err)
-				continue
-			}
-			shouldRenew = needRenewal
-		}
-
-		if shouldRenew {
-			// 执行续期
-			_, err := s.RenewTencentCertificate(cert.SourceID)
-			if err != nil {
-				log.Printf("Failed to renew certificate %s: %v", cert.SourceID, err)
-				continue
-			}
-			renewedCount++
-			log.Printf("Batch-renewed certificate: %s (domain: %s)", cert.SourceID, cert.Domain)
-		}
-	}
-
-	if daysBeforeExpiry != nil {
-		log.Printf("Batch renewal completed: %d/%d certificates renewed (condition: %d days before expiry)", renewedCount, totalCount, *daysBeforeExpiry)
-	} else {
-		log.Printf("Batch renewal completed: %d/%d certificates renewed (no time limit)", renewedCount, totalCount)
-	}
-
-	return renewedCount, totalCount, nil
 }
 
 // handleRenewalCompletion 处理续期完成逻辑
@@ -635,81 +490,6 @@ func (s *TencentSSLService) updateNginxConfigForRenewal(originalCert, newCert db
 	return nil
 }
 
-// GetTencentCertificates 获取腾讯云证书列表
-func (s *TencentSSLService) GetTencentCertificates() ([]db.Certificate, error) {
-	// 从腾讯云API获取证书列表
-	request := ssl.NewDescribeCertificatesRequest()
-	request.Limit = common.Uint64Ptr(100) // 限制返回数量
-
-	response, err := s.sslClient.DescribeCertificates(request)
-	if err != nil {
-		if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
-			return nil, fmt.Errorf("腾讯云API错误: %s - %s", sdkErr.Code, sdkErr.Message)
-		}
-		return nil, fmt.Errorf("获取证书列表失败: %w", err)
-	}
-
-	// 同步腾讯云证书到本地数据库
-	for _, cert := range response.Response.Certificates {
-		var localCert db.Certificate
-		certID := *cert.CertificateId
-
-		// 检查本地是否已存在
-		err := s.db.First(&localCert, "source_id = ? AND source = ?", certID, "tencent_cloud").Error
-		if err == gorm.ErrRecordNotFound {
-			// 创建新记录
-			localCert = db.Certificate{
-				ID:       certID,
-				Name:     *cert.Alias,
-				Domain:   *cert.Domain,
-				Source:   "tencent_cloud",
-				SourceID: certID,
-				Status:   "active",
-			}
-
-			// 解析过期时间
-			if cert.CertEndTime != nil {
-				if expTime, parseErr := time.Parse("2006-01-02 15:04:05", *cert.CertEndTime); parseErr == nil {
-					localCert.ExpiresAt = expTime
-				}
-			}
-
-			s.db.Create(&localCert)
-		} else if err == nil {
-			// 更新现有记录
-			localCert.Name = *cert.Alias
-			localCert.Domain = *cert.Domain
-			if cert.CertEndTime != nil {
-				if expTime, parseErr := time.Parse("2006-01-02 15:04:05", *cert.CertEndTime); parseErr == nil {
-					localCert.ExpiresAt = expTime
-				}
-			}
-			s.db.Save(&localCert)
-		}
-	}
-
-	// 返回本地数据库中的证书列表
-	var certificates []db.Certificate
-	if err := s.db.Where("source = ?", "tencent_cloud").Find(&certificates).Error; err != nil {
-		return nil, fmt.Errorf("failed to get local certificates: %w", err)
-	}
-
-	return certificates, nil
-}
-
-// GetLocalCertificates 获取本地数据库中的腾讯云证书列表（不调用腾讯云API）
-func (s *TencentSSLService) GetLocalCertificates() ([]db.Certificate, error) {
-	var certificates []db.Certificate
-
-	// 只从本地数据库获取腾讯云证书
-	if err := s.db.Where("source = ?", "tencent_cloud").Find(&certificates).Error; err != nil {
-		return nil, fmt.Errorf("failed to get local certificates: %w", err)
-	}
-
-	log.Printf("Retrieved %d certificates from local database", len(certificates))
-	return certificates, nil
-}
-
 // UpdateCertificateName 更新证书名称
 func (s *TencentSSLService) UpdateCertificateName(certificateID, newName string) error {
 	var certificate db.Certificate
@@ -730,10 +510,11 @@ func (s *TencentSSLService) UpdateCertificateName(certificateID, newName string)
 // deleteTencentCloudCertificate 删除腾讯云端的证书
 func (s *TencentSSLService) deleteTencentCloudCertificate(certificateID string) error {
 	// 创建删除证书请求
-	request := ssl.NewDeleteCertificateRequest()
+	request := ssl.NewRevokeCertificateRequest()
 	request.CertificateId = common.StringPtr(certificateID)
+	request.Reason = common.StringPtr("nginx proxy")
 	// 调用腾讯云API删除证书
-	_, err := s.sslClient.DeleteCertificate(request)
+	_, err := s.sslClient.RevokeCertificate(request)
 	if err != nil {
 		if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
 			// 如果证书不存在或已被删除，不视为错误
@@ -903,93 +684,6 @@ func (s *TencentSSLService) parseCertificateExpiry(certContent string) (time.Tim
 	}
 
 	return cert.NotAfter, nil
-}
-
-// startRenewalStatusChecker 启动定时检查续期状态的后台任务
-func (s *TencentSSLService) startRenewalStatusChecker() {
-	log.Println("Starting renewal status checker...")
-
-	// 每5分钟检查一次续期状态
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			s.checkAllRenewalStatus()
-		}
-	}
-}
-
-// checkAllRenewalStatus 检查所有续期中证书的状态
-func (s *TencentSSLService) checkAllRenewalStatus() {
-	// 查找所有状态为"续期中"的证书
-	var renewingCerts []db.Certificate
-	if err := s.db.Where("status = ? AND source = ?", "renewing", "tencent_cloud").Find(&renewingCerts).Error; err != nil {
-		log.Printf("Error finding renewing certificates: %v", err)
-		return
-	}
-
-	if len(renewingCerts) == 0 {
-		return // 没有续期中的证书
-	}
-
-	log.Printf("Found %d certificates in renewal process, checking status...", len(renewingCerts))
-
-	for _, cert := range renewingCerts {
-		if cert.RenewalSourceID == "" {
-			log.Printf("Warning: Certificate %s is marked as renewing but has no renewal_source_id", cert.SourceID)
-			continue
-		}
-
-		// 检查新证书状态
-		log.Printf("Checking renewal status for certificate %s (new cert: %s)", cert.SourceID, cert.RenewalSourceID)
-
-		// 调用腾讯云API检查新证书状态
-		request := ssl.NewDescribeCertificateDetailRequest()
-		request.CertificateId = common.StringPtr(cert.RenewalSourceID)
-
-		response, err := s.sslClient.DescribeCertificateDetail(request)
-		if err != nil {
-			log.Printf("Error checking certificate %s status: %v", cert.RenewalSourceID, err)
-			continue
-		}
-
-		status := *response.Response.Status
-
-		// 如果新证书已通过，处理续期完成
-		if status == 1 { // 1表示已通过
-			log.Printf("New certificate %s is approved, completing renewal for %s", cert.RenewalSourceID, cert.SourceID)
-
-			if err := s.handleRenewalCompletion(cert.SourceID, cert.RenewalSourceID); err != nil {
-				log.Printf("Error completing renewal for certificate %s: %v", cert.SourceID, err)
-			} else {
-				log.Printf("Successfully completed renewal for certificate %s", cert.SourceID)
-			}
-		} else {
-			// 记录当前状态
-			statusMap := map[uint64]string{
-				0:  "审核中",
-				1:  "已通过",
-				2:  "审核失败",
-				3:  "已过期",
-				4:  "DNS记录添加中",
-				5:  "企业证书，待提交",
-				6:  "订单取消中",
-				7:  "已取消",
-				8:  "已提交资料，待上传确认函",
-				9:  "证书吊销中",
-				10: "已吊销",
-				11: "重颁发中",
-				12: "待上传吊销确认函",
-			}
-			statusText := statusMap[status]
-			if statusText == "" {
-				statusText = "未知状态"
-			}
-			log.Printf("Certificate %s renewal still in progress, new cert %s status: %s", cert.SourceID, cert.RenewalSourceID, statusText)
-		}
-	}
 }
 
 // parseCertificateExpiryFromFile 从证书文件解析过期时间

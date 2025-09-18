@@ -36,7 +36,7 @@ func (h *Handler) GetCertificate(c *gin.Context) {
 
 	var certificate db.Certificate
 	if err := h.db.First(&certificate, "id = ?", id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Certificate not found"})
 			return
 		}

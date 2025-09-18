@@ -318,7 +318,7 @@ func (h *Handler) GetRule(c *gin.Context) {
 
 	var rule db.Rule
 	if err := h.db.First(&rule, "id = ?", id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
 			return
 		}
@@ -349,7 +349,7 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		return
 	}
 
-	// 验证域名和端口组合的唯一性
+	// 验证域名唯一性
 	if err := h.validateUniqueServerName(req.ServerName, ""); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
@@ -513,7 +513,7 @@ func (h *Handler) DeleteRule(c *gin.Context) {
 
 	var rule db.Rule
 	if err := h.db.First(&rule, "id = ?", id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
 			return
 		}

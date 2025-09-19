@@ -8,7 +8,8 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/uuid v1.6.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.0.1009
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.1.25
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod v1.1.25
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ssl v1.0.1009
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0

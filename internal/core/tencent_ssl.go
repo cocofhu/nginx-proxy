@@ -16,12 +16,37 @@ import (
 
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
+	tchttp "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/http"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 	ssl "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ssl/v20191205"
 	"gorm.io/gorm"
 
 	"nginx-proxy/internal/db"
 )
+
+var statusMap = map[uint64]string{
+	0:  "审核中",
+	1:  "已通过",
+	2:  "审核失败",
+	3:  "已过期",
+	4:  "DNS记录添加中",
+	5:  "企业证书，待提交",
+	6:  "订单取消中",
+	7:  "已取消",
+	8:  "已提交资料，待上传确认函",
+	9:  "证书吊销中",
+	10: "已吊销",
+	11: "重颁发中",
+	12: "待上传吊销确认函",
+}
+
+func GetStatusText(status uint64) string {
+	statusText := statusMap[status]
+	if statusText == "" {
+		statusText = "未知状态"
+	}
+	return statusText
+}
 
 // TencentSSLService 腾讯云SSL证书服务
 type TencentSSLService struct {
@@ -166,30 +191,10 @@ func (s *TencentSSLService) CheckCertificateStatus(certificateID string) (*Certi
 	}
 
 	status := *response.Response.Status
-	statusMap := map[uint64]string{
-		0:  "审核中",
-		1:  "已通过",
-		2:  "审核失败",
-		3:  "已过期",
-		4:  "DNS记录添加中",
-		5:  "企业证书，待提交",
-		6:  "订单取消中",
-		7:  "已取消",
-		8:  "已提交资料，待上传确认函",
-		9:  "证书吊销中",
-		10: "已吊销",
-		11: "重颁发中",
-		12: "待上传吊销确认函",
-	}
-
-	statusText := statusMap[status]
-	if statusText == "" {
-		statusText = "未知状态"
-	}
 
 	result := &CertificateStatusResponse{
 		CertificateID: certificateID,
-		Status:        statusText,
+		Status:        GetStatusText(status),
 		Domain:        certificate.Domain,
 		Reloaded:      false,
 	}
@@ -365,26 +370,7 @@ func (s *TencentSSLService) handleRenewalCompletion(originalCertID, newCertID st
 
 	// 只有当新证书已通过时才进行切换
 	if status != 1 { // 1表示已通过
-		statusMap := map[uint64]string{
-			0:  "审核中",
-			1:  "已通过",
-			2:  "审核失败",
-			3:  "已过期",
-			4:  "DNS记录添加中",
-			5:  "企业证书，待提交",
-			6:  "订单取消中",
-			7:  "已取消",
-			8:  "已提交资料，待上传确认函",
-			9:  "证书吊销中",
-			10: "已吊销",
-			11: "重颁发中",
-			12: "待上传吊销确认函",
-		}
-		statusText := statusMap[status]
-		if statusText == "" {
-			statusText = "未知状态"
-		}
-		log.Printf("New certificate %s not ready yet, status: %s", newCertID, statusText)
+		log.Printf("New certificate %s not ready yet, status: %s", newCertID, GetStatusText(status))
 		return false, nil
 	}
 
@@ -690,14 +676,11 @@ type TencentCertificateInfo struct {
 // GetAllTencentCertificates 获取腾讯云所有证书列表
 func (s *TencentSSLService) GetAllTencentCertificates() ([]TencentCertificateInfo, error) {
 	log.Printf("Fetching all certificates from Tencent Cloud...")
-
 	// 创建查询证书列表请求
 	request := ssl.NewDescribeCertificatesRequest()
-
 	// 设置分页参数，一次获取所有证书
 	request.Limit = common.Uint64Ptr(100) // 腾讯云单次最多返回100个
 	request.Offset = common.Uint64Ptr(0)
-
 	var allCertificates []TencentCertificateInfo
 
 	for {
@@ -709,65 +692,36 @@ func (s *TencentSSLService) GetAllTencentCertificates() ([]TencentCertificateInf
 			}
 			return nil, fmt.Errorf("获取证书列表失败: %w", err)
 		}
-
 		if response.Response.Certificates == nil || len(response.Response.Certificates) == 0 {
 			break
 		}
-
 		// 处理当前页的证书
 		for _, cert := range response.Response.Certificates {
 			if cert.CertificateId == nil {
 				continue
 			}
-
 			certInfo := TencentCertificateInfo{
 				CertificateID: *cert.CertificateId,
 			}
-
 			if cert.Domain != nil {
 				certInfo.Domain = *cert.Domain
 			}
-
 			if cert.Alias != nil {
 				certInfo.Alias = *cert.Alias
 			}
-
 			if cert.Status != nil {
-				statusMap := map[uint64]string{
-					0:  "审核中",
-					1:  "已通过",
-					2:  "审核失败",
-					3:  "已过期",
-					4:  "DNS记录添加中",
-					5:  "企业证书，待提交",
-					6:  "订单取消中",
-					7:  "已取消",
-					8:  "已提交资料，待上传确认函",
-					9:  "证书吊销中",
-					10: "已吊销",
-					11: "重颁发中",
-					12: "待上传吊销确认函",
-				}
-				if statusText, exists := statusMap[*cert.Status]; exists {
-					certInfo.Status = statusText
-				} else {
-					certInfo.Status = "未知状态"
-				}
+				certInfo.Status = GetStatusText(*cert.Status)
 			}
-
 			if cert.CertEndTime != nil {
 				certInfo.ExpiresAt = *cert.CertEndTime
 			}
-
 			allCertificates = append(allCertificates, certInfo)
 		}
-
 		// 检查是否还有更多证书
 		if response.Response.TotalCount == nil ||
 			uint64(len(allCertificates)) >= *response.Response.TotalCount {
 			break
 		}
-
 		// 更新偏移量获取下一页
 		*request.Offset += *request.Limit
 	}
@@ -779,4 +733,22 @@ func (s *TencentSSLService) GetAllTencentCertificates() ([]TencentCertificateInf
 // RevokeTencentCertificateByID 根据证书ID吊销腾讯云证书
 func (s *TencentSSLService) RevokeTencentCertificateByID(certificateID string) error {
 	return s.revokeTencentCloudCertificate(certificateID)
+}
+
+type cancelRevokeRequest struct {
+	*tchttp.BaseRequest
+	// 证书 ID。
+	CertificateId *string `json:"CertificateId,omitnil,omitempty" name:"CertificateId"`
+	// 吊销证书原因。
+	Reason *string `json:"Reason,omitnil,omitempty" name:"Reason"`
+}
+
+func (s *TencentSSLService) CancelRevokeTencentCertificateByID(certificateID string) error {
+	request := &cancelRevokeRequest{
+		BaseRequest:   &tchttp.BaseRequest{},
+		CertificateId: common.StringPtr(certificateID),
+	}
+	request.Init().WithApiInfo("ssl", ssl.APIVersion, "CancelRevoke")
+	response := &tchttp.BaseResponse{}
+	return s.sslClient.Send(request, response)
 }

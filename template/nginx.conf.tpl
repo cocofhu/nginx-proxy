@@ -76,6 +76,9 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $server_name;
+        {{- if and $.SSLCert $.SSLKey }}
+        proxy_set_header X-Forwarded-Ssl on;
+        {{- end }}
 
         # 代理超时设置
         proxy_connect_timeout 30s;

@@ -586,8 +586,13 @@ func (s *TencentSSLService) extractCertificateFromZip(zipContent, certPath, keyP
 
 	var certContent, keyContent string
 
-	// 遍历ZIP文件中的所有文件
+	// 遍历ZIP文件中的所有文件，只提取Nginx目录下的文件
 	for _, file := range zipReader.File {
+		// 只处理Nginx目录下的文件
+		if !strings.HasPrefix(file.Name, "Nginx/") {
+			continue
+		}
+
 		rc, err := file.Open()
 		if err != nil {
 			log.Printf("Warning: Failed to open file %s in zip: %v", file.Name, err)
@@ -605,10 +610,8 @@ func (s *TencentSSLService) extractCertificateFromZip(zipContent, certPath, keyP
 
 		fileName := strings.ToLower(file.Name)
 
-		// 识别证书文件（.crt, .pem, .cer）
-		if strings.HasSuffix(fileName, ".crt") ||
-			strings.HasSuffix(fileName, ".pem") ||
-			strings.HasSuffix(fileName, ".cer") {
+		// 识别证书文件（bundle.crt包含完整证书链）
+		if strings.HasSuffix(fileName, "bundle.crt") || strings.HasSuffix(fileName, ".crt") {
 			certContent = string(content)
 		}
 
@@ -620,10 +623,10 @@ func (s *TencentSSLService) extractCertificateFromZip(zipContent, certPath, keyP
 
 	// 检查是否找到了证书和私钥
 	if certContent == "" {
-		return fmt.Errorf("certificate file not found in zip")
+		return fmt.Errorf("certificate file not found in Nginx directory")
 	}
 	if keyContent == "" {
-		return fmt.Errorf("private key file not found in zip")
+		return fmt.Errorf("private key file not found in Nginx directory")
 	}
 
 	// 保存证书文件
@@ -636,6 +639,7 @@ func (s *TencentSSLService) extractCertificateFromZip(zipContent, certPath, keyP
 		return fmt.Errorf("failed to save key file: %w", err)
 	}
 
+	log.Printf("Successfully extracted Nginx certificate and key")
 	return nil
 }
 

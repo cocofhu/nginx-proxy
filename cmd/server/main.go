@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,7 +17,10 @@ import (
 
 func main() {
 	// 加载配置
-	config, err := core.LoadConfig("config.json")
+	configFile := flag.String("config", "config.json", "配置文件路径")
+	flag.Parse()
+
+	config, err := core.LoadConfig(*configFile)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
 )
 
 // MigrateCertificateTable 迁移证书表，添加新字段

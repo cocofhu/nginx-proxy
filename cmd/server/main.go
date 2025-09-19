@@ -13,6 +13,9 @@ import (
 	"nginx-proxy/internal/api"
 	"nginx-proxy/internal/core"
 	"nginx-proxy/internal/db"
+
+	// 使用纯 Go 的 SQLite 驱动
+	_ "modernc.org/sqlite"
 )
 
 func main() {
@@ -25,8 +28,11 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// 初始化数据库
-	database, err := gorm.Open(sqlite.Open(config.Database.DSN), &gorm.Config{})
+	// 初始化数据库 - 使用纯 Go SQLite 驱动
+	database, err := gorm.Open(sqlite.Dialector{
+		DriverName: "sqlite",
+		DSN:        config.Database.DSN,
+	}, &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}

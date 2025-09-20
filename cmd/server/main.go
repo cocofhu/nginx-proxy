@@ -77,7 +77,7 @@ func main() {
 	// 初始化腾讯云SSL服务（如果配置了）
 	var tencentSSL *core.TencentSSLService
 	if config.TencentCloud.SecretId != "" && config.TencentCloud.SecretKey != "" {
-		tencentSSL = core.NewTencentSSLService(&config.TencentCloud, &config.CloudFlare, database, config.SSL.CertDir)
+		tencentSSL = core.NewTencentSSLService(&config.TencentCloud, &config.Cloudflare, database, config.SSL.CertDir)
 		log.Println("Tencent Cloud SSL service initialized")
 	} else {
 		log.Println("Tencent Cloud SSL service not configured")
@@ -85,11 +85,11 @@ func main() {
 
 	// 初始化清理服务
 	cleanupConfig := core.CleanupConfig{
-		CloudflareAPIToken: config.CloudFlare.Token,
+		CloudflareAPIToken: config.Cloudflare.Token,
 		TencentSecretId:    config.TencentCloud.SecretId,
 		TencentSecretKey:   config.TencentCloud.SecretKey,
 		TencentRegion:      config.TencentCloud.Region,
-		CleanupInterval:    time.Minute * 5,
+		CleanupInterval:    time.Minute,
 	}
 
 	cleanupService, err := core.NewCleanupService(database, cleanupConfig)

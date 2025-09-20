@@ -173,10 +173,15 @@ func (s *TencentSSLService) ApplyCertificate(req *ApplyCertificateRequest) (*App
 
 		descResponse, err := s.sslClient.DescribeCertificateDetail(descRequest)
 
+		if err != nil {
+			log.Printf("Warning: failed to finish dns record: %v", err)
+		}
+
 		if err == nil && descResponse.Response.DvAuthDetail != nil {
-			key := *descResponse.Response.DvAuthDetail.DvAuthKeySubDomain
-			value := *descResponse.Response.DvAuthDetail.DvAuthValue
-			domain := *descResponse.Response.DvAuthDetail.DvAuthDomain
+			detail := descResponse.Response.DvAuthDetail.DvAuths[0]
+			key := *detail.DvAuthSubDomain
+			value := *detail.DvAuthValue
+			domain := *detail.DvAuthDomain
 			result.ValidateInfo = map[string]interface{}{
 				"type":   "DNS",
 				"record": key,
@@ -189,12 +194,13 @@ func (s *TencentSSLService) ApplyCertificate(req *ApplyCertificateRequest) (*App
 	return result, nil
 }
 
+// startAuthProcess 启动DNS验证流程, 这个操作非常重要
 func (s *TencentSSLService) startAuthProcess(key, value, domain, certificateId string) {
 	if s.cfAPI != nil && slices.Contains(s.cfDomains, domain) {
 		log.Printf("start add dv auth: %s %s %s", domain, key, value)
 		err := s.addCloudflareDNSRecords(domain, key, value)
 		if err != nil {
-			log.Printf("cannot add record to cloudflare: %v", err)
+			log.Printf("Warining: cannot add record to cloudflare: %v", err)
 		} else {
 			// 加入清除队列 自动清理
 			record := db.AuthRecord{
@@ -206,7 +212,7 @@ func (s *TencentSSLService) startAuthProcess(key, value, domain, certificateId s
 				Source:        "cloudflare",
 				CertificateId: certificateId,
 			}
-			err := s.db.Create(&record)
+			err := s.db.Create(&record).Error
 			if err != nil {
 				log.Printf("cannot add cleanup record to db: %v %v", record, err)
 			}
@@ -366,15 +372,19 @@ func (s *TencentSSLService) RenewTencentCertificate(oldCertificateID string) (*R
 	descRequest.CertificateId = common.StringPtr(newCertID)
 
 	if descResponse, err := s.sslClient.DescribeCertificateDetail(descRequest); err == nil && descResponse.Response.DvAuthDetail != nil {
-		key := *descResponse.Response.DvAuthDetail.DvAuthKeySubDomain
-		value := *descResponse.Response.DvAuthDetail.DvAuthValue
-		domain := *descResponse.Response.DvAuthDetail.DvAuthDomain
+		detail := descResponse.Response.DvAuthDetail.DvAuths[0]
+		key := *detail.DvAuthSubDomain
+		value := *detail.DvAuthValue
+		domain := *detail.DvAuthDomain
 		renewResponse.ValidateInfo = map[string]interface{}{
 			"type":   "DNS",
 			"record": key,
 			"value":  value,
 		}
 		s.startAuthProcess(key, value, domain, newCertID)
+	} else {
+		log.Printf("Warning: failed to finish dns record: %v", descRequest)
+
 	}
 	log.Printf("Certificate renewal initiated: cert=%s, new_cert_id=%s", oldCertificateID, newCertID)
 	return renewResponse, nil
@@ -549,13 +559,14 @@ func (s *TencentSSLService) revokeTencentCloudCertificate(certificateID string) 
 				Source:        "tencent_cloud",
 				CertificateId: certificateID,
 			}
-			err := s.db.Create(&record)
+			err := s.db.Create(&record).Error
 			if err != nil {
 				log.Printf("cannot add cleanup record to db: %v %v", record, err)
 			}
 		} else {
 			// 腾讯云数据不一致, 或者接口挂了
 			log.Printf("Warning: cannot create revoke post task which is remove-record")
+			log.Printf("Warning: failed to finish dns record: %v", descRequest)
 		}
 
 	}

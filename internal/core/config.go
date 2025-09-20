@@ -12,7 +12,7 @@ type Config struct {
 	Nginx        NginxConfig        `json:"nginx"`
 	SSL          SSLConfig          `json:"ssl"`
 	TencentCloud TencentCloudConfig `json:"tencent_cloud"`
-	CloudFlare   CloudflareConfig   `json:"cloud_flare"`
+	Cloudflare   CloudflareConfig   `json:"cloudflare"`
 }
 
 type CloudflareConfig struct {
@@ -90,10 +90,10 @@ func LoadConfig(configPath string) (*Config, error) {
 		config.TencentCloud.Region = envRegion
 	}
 	if cfToken := os.Getenv("CLOUDFLARE_TOKEN"); cfToken != "" {
-		config.CloudFlare.Token = cfToken
+		config.Cloudflare.Token = cfToken
 	}
 	if domains := os.Getenv("CLOUDFLARE_DOMAINS"); domains != "" {
-		config.CloudFlare.Domains = strings.Split(domains, ";")
+		config.Cloudflare.Domains = strings.Split(domains, ";")
 	}
 	return &config, nil
 }

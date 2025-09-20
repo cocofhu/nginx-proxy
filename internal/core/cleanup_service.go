@@ -198,7 +198,7 @@ func (s *CleanupService) cleanupCloudflareRecord(record db.AuthRecord) error {
 	// 查找DNS记录
 	records, _, err := s.cfAPI.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.ListDNSRecordsParams{
 		Type: record.Type,
-		Name: record.Key,
+		Name: record.Key + "." + record.Domain,
 	})
 	if err != nil {
 		return fmt.Errorf("query records of dns failed from cloudflare : %w", err)

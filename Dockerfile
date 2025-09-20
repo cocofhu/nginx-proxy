@@ -71,6 +71,10 @@ VOLUME ["/app/data", "/etc/nginx/conf.d", "/etc/nginx/certs", "/var/log/nginx", 
 # 暴露端口
 EXPOSE 80 443 8080
 
+ENV TENCENT_SECRET_ID  "secert id"
+ENV TENCENT_SECRET_KEY  "secert key"
+ENV TENCENT_REGION  "ap-beijing"
+
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8080/api/rules || exit 1

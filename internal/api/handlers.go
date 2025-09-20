@@ -496,18 +496,27 @@ func (h *Handler) RegenerateAllConfigs() error {
 	if err := h.db.Find(&rules).Error; err != nil {
 		return err
 	}
+	errorMessages := ""
 	for _, rule := range rules {
 		if err := h.generator.DeleteConfig(rule.ID); err != nil {
+			errorMessages += err.Error() + "\n"
 			log.Printf("Failed to delete config for rule %s: %v", rule.ID, err)
 		}
 		if err := h.generator.GenerateConfig(&rule); err != nil {
+			errorMessages += err.Error() + "\n"
 			log.Printf("Failed to regenerate config for rule %s: %v", rule.ID, err)
 		}
 	}
 	if err := h.nginxManager.TestConfig(); err != nil {
+		errorMessages += err.Error() + "\n"
 		log.Printf("Failed to test config for rule %v", err)
 	} else if err := h.nginxManager.Reload(); err != nil {
+		errorMessages += err.Error() + "\n"
 		log.Printf("Warning: Failed to reload nginx: %v", err)
+	}
+
+	if len(errorMessages) != 0 {
+		return fmt.Errorf(errorMessages)
 	}
 	return nil
 }

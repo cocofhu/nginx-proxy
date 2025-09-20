@@ -76,7 +76,7 @@ func (h *Handler) DownloadTencentCertificate(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "下载证书失败: " + err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "证书下载成功"})
+	c.JSON(http.StatusOK, gin.H{"message": "证书已成功下载到本地"})
 }
 
 // UpdateCertificateName 更新证书名称

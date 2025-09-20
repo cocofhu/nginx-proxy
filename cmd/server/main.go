@@ -14,6 +14,7 @@ import (
 	"nginx-proxy/internal/core"
 	"nginx-proxy/internal/db"
 
+	"gopkg.in/natefinch/lumberjack.v2"
 	// 使用纯 Go 的 SQLite 驱动
 	_ "modernc.org/sqlite"
 )
@@ -27,6 +28,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+
+	log.SetOutput(&lumberjack.Logger{
+		Filename:   "./app.log", // 不直接加日期
+		MaxSize:    10,          // MB
+		MaxBackups: 7,
+		MaxAge:     30, // 保留天数
+		Compress:   true,
+	})
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	// 初始化数据库 - 使用纯 Go SQLite 驱动
 	database, err := gorm.Open(sqlite.Dialector{

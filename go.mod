@@ -11,6 +11,7 @@ require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.1.25
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod v1.1.25
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ssl v1.0.1009
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0
 	modernc.org/sqlite v1.39.0

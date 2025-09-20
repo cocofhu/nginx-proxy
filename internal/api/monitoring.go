@@ -18,7 +18,6 @@ func (h *Handler) HealthCheck(c *gin.Context) {
 		})
 		return
 	}
-
 	if err := sqlDB.Ping(); err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"status": "unhealthy",
@@ -26,7 +25,6 @@ func (h *Handler) HealthCheck(c *gin.Context) {
 		})
 		return
 	}
-
 	// 检查Nginx状态
 	if err := h.nginxManager.TestConfig(); err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -35,7 +33,6 @@ func (h *Handler) HealthCheck(c *gin.Context) {
 		})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"status":    "healthy",
 		"timestamp": time.Now(),

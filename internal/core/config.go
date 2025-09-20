@@ -73,18 +73,14 @@ func LoadConfig(configPath string) (*Config, error) {
 	if config.TencentCloud.Region == "" {
 		config.TencentCloud.Region = "ap-beijing"
 	}
-
 	if envSecretId := os.Getenv("TENCENT_SECRET_ID"); envSecretId != "" {
 		config.TencentCloud.SecretId = envSecretId
 	}
-
 	if envSecretKey := os.Getenv("TENCENT_SECRET_KEY"); envSecretKey != "" {
 		config.TencentCloud.SecretKey = envSecretKey
 	}
-
 	if envRegion := os.Getenv("TENCENT_REGION"); envRegion != "" {
 		config.TencentCloud.Region = envRegion
 	}
-
 	return &config, nil
 }

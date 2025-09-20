@@ -51,39 +51,6 @@ func NewDNSPodService(config *TencentCloudConfig) *DNSPodService {
 	}
 }
 
-// CheckValidationRecord 检查域名是否有DNS验证记录
-func (d *DNSPodService) CheckValidationRecord(domain string) (bool, error) {
-	// 提取主域名
-	mainDomain := d.extractMainDomain(domain)
-
-	// 查询DNS记录
-	request := dnspod.NewDescribeRecordListRequest()
-	request.Domain = common.StringPtr(mainDomain)
-	request.RecordType = common.StringPtr("TXT")
-
-	response, err := d.client.DescribeRecordList(request)
-	if err != nil {
-		if sdkError, ok := err.(*errors.TencentCloudSDKError); ok {
-			return false, fmt.Errorf("查询DNS记录失败: %s - %s", sdkError.Code, sdkError.Message)
-		}
-		return false, fmt.Errorf("查询DNS记录失败: %v", err)
-	}
-
-	// 检查是否存在验证记录（通常是 _acme-challenge 开头的TXT记录）
-	validationPrefix := "_acme-challenge"
-
-	if response.Response.RecordList != nil {
-		for _, record := range response.Response.RecordList {
-			if record.Name != nil && record.Type != nil &&
-				*record.Type == "TXT" && strings.HasPrefix(*record.Name, validationPrefix) {
-				return true, nil
-			}
-		}
-	}
-
-	return false, nil
-}
-
 // GetCertificateValidationInfo 获取证书的DNS验证信息
 func (d *DNSPodService) GetCertificateValidationInfo(certificateID string) (*CertificateValidationInfo, error) {
 	request := ssl.NewDescribeCertificateDetailRequest()

@@ -184,9 +184,6 @@ func (s *TencentSSLService) CheckCertificateStatus(certificateID string) (*Certi
 
 	response, err := s.sslClient.DescribeCertificateDetail(request)
 	if err != nil {
-		if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
-			return nil, fmt.Errorf("腾讯云API错误: %s - %s", sdkErr.Code, sdkErr.Message)
-		}
 		return nil, fmt.Errorf("查询证书状态失败: %w", err)
 	}
 
@@ -253,9 +250,6 @@ func (s *TencentSSLService) downloadCertificateFromAPI(certificateID string) (st
 
 	response, err := s.sslClient.DownloadCertificate(request)
 	if err != nil {
-		if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
-			return "", "", fmt.Errorf("腾讯云API错误: %s - %s", sdkErr.Code, sdkErr.Message)
-		}
 		return "", "", fmt.Errorf("下载证书失败: %w", err)
 	}
 
@@ -307,10 +301,6 @@ func (s *TencentSSLService) RenewTencentCertificate(oldCertificateID string) (*R
 		// 如果申请失败，恢复证书状态
 		certificate.Status = "active"
 		s.db.Save(&certificate)
-
-		if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
-			return nil, fmt.Errorf("腾讯云API错误: %s - %s", sdkErr.Code, sdkErr.Message)
-		}
 		return nil, fmt.Errorf("申请新证书失败: %w", err)
 	}
 
@@ -503,28 +493,18 @@ func (s *TencentSSLService) UpdateCertificateName(certificateID, newName string)
 	return nil
 }
 
-// revokeTencentCloudCertificate 删除腾讯云端的证书
+// revokeTencentCloudCertificate 吊销腾讯云端的证书
 func (s *TencentSSLService) revokeTencentCloudCertificate(certificateID string) error {
 	// 创建删除证书请求
 	request := ssl.NewRevokeCertificateRequest()
 	request.CertificateId = common.StringPtr(certificateID)
 	request.Reason = common.StringPtr("nginx proxy")
-	// 调用腾讯云API删除证书
+	// 吊销腾讯云端的证书
 	_, err := s.sslClient.RevokeCertificate(request)
 	if err != nil {
-		if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
-			// 如果证书不存在或已被删除，不视为错误
-			if sdkErr.Code == "InvalidParameter.CertificateNotFound" ||
-				sdkErr.Code == "InvalidParameter.CertificateStatusInvalid" {
-				log.Printf("Certificate %s not found or already deleted in Tencent Cloud", certificateID)
-				return nil
-			}
-			return fmt.Errorf("腾讯云API错误: %s - %s", sdkErr.Code, sdkErr.Message)
-		}
-		return fmt.Errorf("删除腾讯云证书失败: %w", err)
+		return fmt.Errorf("吊销腾讯云证书失败: %w", err)
 	}
-
-	log.Printf("Successfully deleted certificate %s from Tencent Cloud", certificateID)
+	log.Printf("Successfully revoke certificate %s from Tencent Cloud", certificateID)
 	return nil
 }
 

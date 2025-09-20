@@ -33,7 +33,6 @@ func (n *NginxManager) Reload() error {
 	if err := n.TestConfig(); err != nil {
 		return err
 	}
-
 	// 执行重新加载
 	cmd := exec.Command(n.nginxPath, "-s", "reload")
 	output, err := cmd.CombinedOutput()

@@ -27,10 +27,8 @@ func NewGenerator(templateDir, configDir string) *Generator {
 // loadTemplate 加载模板文件
 func (g *Generator) loadTemplate() error {
 	templatePath := filepath.Join(g.templateDir, "nginx.conf.tpl")
-
 	// 创建带有自定义函数的模板
 	tmpl := template.New("nginx.conf.tpl")
-
 	tmpl, err := tmpl.ParseFiles(templatePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
@@ -46,21 +44,17 @@ func (g *Generator) GenerateConfig(rule *db.Rule) error {
 			return err
 		}
 	}
-
 	// 确保配置目录存在
 	if err := os.MkdirAll(g.configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-
 	// 转换为模板数据
 	templateData, err := g.prepareTemplateData(rule)
 	if err != nil {
 		return fmt.Errorf("failed to prepare template data: %w", err)
 	}
-
 	// 生成配置文件路径
 	configPath := filepath.Join(g.configDir, fmt.Sprintf("%s.conf", rule.ID))
-
 	// 创建配置文件
 	file, err := os.Create(configPath)
 	if err != nil {
@@ -72,7 +66,6 @@ func (g *Generator) GenerateConfig(rule *db.Rule) error {
 			fmt.Printf("Warning: Failed to close config file: %v\n", closeErr)
 		}
 	}()
-
 	// 执行模板渲染
 	if err := g.template.Execute(file, templateData); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
@@ -96,12 +89,10 @@ func (g *Generator) prepareTemplateData(rule *db.Rule) (*TemplateData, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	locations, err := rule.GetLocations()
 	if err != nil {
 		return nil, err
 	}
-
 	return &TemplateData{
 		ServerName:  rule.ServerName,
 		ListenPorts: ports,

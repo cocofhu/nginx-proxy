@@ -124,9 +124,6 @@ func (s *TencentSSLService) ApplyCertificate(req *ApplyCertificateRequest) (*App
 	// 调用腾讯云API
 	response, err := s.sslClient.ApplyCertificate(request)
 	if err != nil {
-		if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
-			return nil, fmt.Errorf("腾讯云API错误: %s - %s", sdkErr.Code, sdkErr.Message)
-		}
 		return nil, fmt.Errorf("申请证书失败: %w", err)
 	}
 
@@ -162,7 +159,7 @@ func (s *TencentSSLService) ApplyCertificate(req *ApplyCertificateRequest) (*App
 		if err == nil && descResponse.Response.DvAuthDetail != nil {
 			result.ValidateInfo = map[string]interface{}{
 				"type":   "DNS",
-				"record": *descResponse.Response.DvAuthDetail.DvAuthKey,
+				"record": *descResponse.Response.DvAuthDetail.DvAuthKeySubDomain,
 				"value":  *descResponse.Response.DvAuthDetail.DvAuthValue,
 			}
 		}
@@ -325,7 +322,7 @@ func (s *TencentSSLService) RenewTencentCertificate(oldCertificateID string) (*R
 	if descResponse, err := s.sslClient.DescribeCertificateDetail(descRequest); err == nil && descResponse.Response.DvAuthDetail != nil {
 		renewResponse.ValidateInfo = map[string]interface{}{
 			"type":   "DNS",
-			"record": *descResponse.Response.DvAuthDetail.DvAuthKey,
+			"record": *descResponse.Response.DvAuthDetail.DvAuthKeySubDomain,
 			"value":  *descResponse.Response.DvAuthDetail.DvAuthValue,
 		}
 	}
@@ -350,9 +347,6 @@ func (s *TencentSSLService) handleRenewalCompletion(originalCertID, newCertID st
 
 	response, err := s.sslClient.DescribeCertificateDetail(request)
 	if err != nil {
-		if sdkErr, ok := err.(*errors.TencentCloudSDKError); ok {
-			return false, fmt.Errorf("腾讯云API错误: %s - %s", sdkErr.Code, sdkErr.Message)
-		}
 		return false, fmt.Errorf("查询新证书状态失败: %w", err)
 	}
 

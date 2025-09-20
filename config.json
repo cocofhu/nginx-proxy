@@ -19,5 +19,9 @@
     "secret_id": "xxx",
     "secret_key": "xxx",
     "region": "ap-beijing"
+  },
+  "cloudflare" : {
+    "token" : "xxx",
+    "domains" : [""]
   }
 }

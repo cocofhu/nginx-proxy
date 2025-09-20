@@ -128,3 +128,18 @@ type Certificate struct {
 	UpdatedAt        time.Time      `json:"updated_at"`
 	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index"`
 }
+
+// AuthRecord 待处理的DNS记录, 由于证书验证会导致DNS记录越来越多 这里需要记录下来定期删除
+type AuthRecord struct {
+	ID            string         `json:"id" gorm:"primaryKey"`
+	Domain        string         `json:"domain"`                // 主域名
+	Key           string         `json:"key" gorm:"not null"`   // 记录Key
+	Value         string         `json:"value" gorm:"not null"` // 记录值
+	Type          string         `json:"type"`                  // 记录类型: TXT
+	Action        string         `json:"action"`                // 异步任务类型 add delete
+	Source        string         `json:"source"`                // 域名托管位置: "cloudflare", "tencent_cloud"
+	CertificateId string         `json:"certificate_id"`        // 来源ID，如腾讯云证书ID
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `json:"-" gorm:"index"`
+}

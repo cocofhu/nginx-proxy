@@ -230,7 +230,7 @@ func (s *CleanupService) cleanupTencentRecord(record db.AuthRecord) error {
 	listResponse, err := s.dpClient.DescribeRecordList(listRequest)
 
 	if err != nil {
-		return fmt.Errorf("query : %v", err)
+		return fmt.Errorf("query dnspod records error: %v", err)
 	}
 
 	// 查找匹配的记录

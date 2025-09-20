@@ -136,7 +136,6 @@ type AuthRecord struct {
 	Key           string         `json:"key" gorm:"not null"`   // 记录Key
 	Value         string         `json:"value" gorm:"not null"` // 记录值
 	Type          string         `json:"type"`                  // 记录类型: TXT
-	Action        string         `json:"action"`                // 异步任务类型 add delete
 	Source        string         `json:"source"`                // 域名托管位置: "cloudflare", "tencent_cloud"
 	CertificateId string         `json:"certificate_id"`        // 来源ID，如腾讯云证书ID
 	CreatedAt     time.Time      `json:"created_at"`

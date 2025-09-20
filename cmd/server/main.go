@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
@@ -48,7 +52,7 @@ func main() {
 	}
 
 	// 自动迁移数据库
-	if err := database.AutoMigrate(&db.Rule{}, &db.Certificate{}); err != nil {
+	if err := database.AutoMigrate(&db.Rule{}, &db.Certificate{}, &db.AuthRecord{}); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
@@ -73,10 +77,28 @@ func main() {
 	// 初始化腾讯云SSL服务（如果配置了）
 	var tencentSSL *core.TencentSSLService
 	if config.TencentCloud.SecretId != "" && config.TencentCloud.SecretKey != "" {
-		tencentSSL = core.NewTencentSSLService(&config.TencentCloud, database, config.SSL.CertDir)
+		tencentSSL = core.NewTencentSSLService(&config.TencentCloud, &config.CloudFlare, database, config.SSL.CertDir)
 		log.Println("Tencent Cloud SSL service initialized")
 	} else {
 		log.Println("Tencent Cloud SSL service not configured")
+	}
+
+	// 初始化清理服务
+	cleanupConfig := core.CleanupConfig{
+		CloudflareAPIToken: config.CloudFlare.Token,
+		TencentSecretId:    config.TencentCloud.SecretId,
+		TencentSecretKey:   config.TencentCloud.SecretKey,
+		TencentRegion:      config.TencentCloud.Region,
+		CleanupInterval:    time.Minute * 5,
+	}
+
+	cleanupService, err := core.NewCleanupService(database, cleanupConfig)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize cleanup service: %v", err)
+	} else {
+		// 启动清理服务
+		cleanupService.Start()
+		log.Println("Certificate cleanup service started")
 	}
 
 	// 初始化API处理器
@@ -133,7 +155,25 @@ func main() {
 	} else {
 		log.Printf("Server reload config success")
 	}
-	if err := http.ListenAndServe(addr, router); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+
+	// 优雅关闭处理
+	go func() {
+		if err := http.ListenAndServe(addr, router); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	// 等待中断信号
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server...")
+
+	// 停止清理服务
+	if cleanupService != nil {
+		cleanupService.Stop()
 	}
+
+	log.Println("Server stopped")
 }

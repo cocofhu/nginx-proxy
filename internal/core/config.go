@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -11,6 +12,12 @@ type Config struct {
 	Nginx        NginxConfig        `json:"nginx"`
 	SSL          SSLConfig          `json:"ssl"`
 	TencentCloud TencentCloudConfig `json:"tencent_cloud"`
+	CloudFlare   CloudflareConfig   `json:"cloud_flare"`
+}
+
+type CloudflareConfig struct {
+	Token   string   `json:"token"`
+	Domains []string `json:"domains"`
 }
 
 type ServerConfig struct {
@@ -81,6 +88,12 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 	if envRegion := os.Getenv("TENCENT_REGION"); envRegion != "" {
 		config.TencentCloud.Region = envRegion
+	}
+	if cfToken := os.Getenv("CLOUDFLARE_TOKEN"); cfToken != "" {
+		config.CloudFlare.Token = cfToken
+	}
+	if domains := os.Getenv("CLOUDFLARE_DOMAINS"); domains != "" {
+		config.CloudFlare.Domains = strings.Split(domains, ";")
 	}
 	return &config, nil
 }

@@ -3,6 +3,7 @@ package core
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -11,9 +12,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/cloudflare/cloudflare-go"
+	"github.com/google/uuid"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
 	tchttp "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/http"
@@ -51,6 +55,8 @@ func GetStatusText(status uint64) string {
 // TencentSSLService 腾讯云SSL证书服务
 type TencentSSLService struct {
 	sslClient *ssl.Client
+	cfAPI     *cloudflare.API
+	cfDomains []string
 	db        *gorm.DB
 	certDir   string
 }
@@ -86,12 +92,13 @@ type RenewCertificateResponse struct {
 }
 
 // NewTencentSSLService 创建腾讯云SSL服务实例
-func NewTencentSSLService(config *TencentCloudConfig, database *gorm.DB, certDir string) *TencentSSLService {
-	credential := common.NewCredential(config.SecretId, config.SecretKey)
+func NewTencentSSLService(tcConfig *TencentCloudConfig, cfConfig *CloudflareConfig,
+	database *gorm.DB, certDir string) *TencentSSLService {
+	credential := common.NewCredential(tcConfig.SecretId, tcConfig.SecretKey)
 	cpf := profile.NewClientProfile()
 	cpf.HttpProfile.Endpoint = "ssl.tencentcloudapi.com"
 
-	client, err := ssl.NewClient(credential, config.Region, cpf)
+	client, err := ssl.NewClient(credential, tcConfig.Region, cpf)
 	if err != nil {
 		log.Printf("Failed to create Tencent Cloud SSL client: %v", err)
 		return nil
@@ -101,8 +108,17 @@ func NewTencentSSLService(config *TencentCloudConfig, database *gorm.DB, certDir
 		sslClient: client,
 		db:        database,
 		certDir:   certDir,
+		cfDomains: cfConfig.Domains,
+		cfAPI:     nil,
 	}
 
+	if cfConfig.Token != "" {
+		cfAPI, err := cloudflare.NewWithAPIToken(cfConfig.Token)
+		if err != nil {
+			log.Printf("failed to create Cloudflare API client: %v", err)
+		}
+		service.cfAPI = cfAPI
+	}
 	return service
 }
 
@@ -150,22 +166,52 @@ func (s *TencentSSLService) ApplyCertificate(req *ApplyCertificateRequest) (*App
 	}
 
 	// 获取验证信息
-	if req.ValidateType == "DNS" {
+	if req.ValidateType == "DNS" || req.ValidateType == "DNS_AUTO" {
 		// 查询DNS验证信息
 		descRequest := ssl.NewDescribeCertificateDetailRequest()
 		descRequest.CertificateId = common.StringPtr(certID)
 
 		descResponse, err := s.sslClient.DescribeCertificateDetail(descRequest)
+
 		if err == nil && descResponse.Response.DvAuthDetail != nil {
+			key := *descResponse.Response.DvAuthDetail.DvAuthKeySubDomain
+			value := *descResponse.Response.DvAuthDetail.DvAuthValue
+			domain := *descResponse.Response.DvAuthDetail.DvAuthDomain
 			result.ValidateInfo = map[string]interface{}{
 				"type":   "DNS",
-				"record": *descResponse.Response.DvAuthDetail.DvAuthKeySubDomain,
-				"value":  *descResponse.Response.DvAuthDetail.DvAuthValue,
+				"record": key,
+				"value":  value,
 			}
+			s.startAuthProcess(key, value, domain, *descResponse.Response.CertificateId)
 		}
 	}
 
 	return result, nil
+}
+
+func (s *TencentSSLService) startAuthProcess(key, value, domain, certificateId string) {
+	if s.cfAPI != nil && slices.Contains(s.cfDomains, domain) {
+		log.Printf("start add dv auth: %s %s %s", domain, key, value)
+		err := s.addCloudflareDNSRecords(domain, key, value)
+		if err != nil {
+			log.Printf("cannot add record to cloudflare: %v", err)
+		} else {
+			// 加入清除队列 自动清理
+			record := db.AuthRecord{
+				ID:            uuid.New().String(),
+				Domain:        domain,
+				Key:           key,
+				Value:         value,
+				Type:          "TXT",
+				Source:        "cloudflare",
+				CertificateId: certificateId,
+			}
+			err := s.db.Create(&record)
+			if err != nil {
+				log.Printf("cannot add cleanup record to db: %v %v", record, err)
+			}
+		}
+	}
 }
 
 // CheckCertificateStatus 检查证书状态
@@ -320,13 +366,16 @@ func (s *TencentSSLService) RenewTencentCertificate(oldCertificateID string) (*R
 	descRequest.CertificateId = common.StringPtr(newCertID)
 
 	if descResponse, err := s.sslClient.DescribeCertificateDetail(descRequest); err == nil && descResponse.Response.DvAuthDetail != nil {
+		key := *descResponse.Response.DvAuthDetail.DvAuthKeySubDomain
+		value := *descResponse.Response.DvAuthDetail.DvAuthValue
+		domain := *descResponse.Response.DvAuthDetail.DvAuthDomain
 		renewResponse.ValidateInfo = map[string]interface{}{
 			"type":   "DNS",
-			"record": *descResponse.Response.DvAuthDetail.DvAuthKeySubDomain,
-			"value":  *descResponse.Response.DvAuthDetail.DvAuthValue,
+			"record": key,
+			"value":  value,
 		}
+		s.startAuthProcess(key, value, domain, newCertID)
 	}
-
 	log.Printf("Certificate renewal initiated: cert=%s, new_cert_id=%s", oldCertificateID, newCertID)
 	return renewResponse, nil
 }
@@ -334,30 +383,24 @@ func (s *TencentSSLService) RenewTencentCertificate(oldCertificateID string) (*R
 // handleRenewalCompletion 处理续期完成逻辑
 func (s *TencentSSLService) handleRenewalCompletion(originalCertID, newCertID string) (bool, error) {
 	log.Printf("Handling renewal completion: original=%s, new=%s", originalCertID, newCertID)
-
 	// 获取原始证书信息
 	var originalCert db.Certificate
 	if err := s.db.First(&originalCert, "source_id = ? AND source = ?", originalCertID, "tencent_cloud").Error; err != nil {
 		return false, fmt.Errorf("failed to find original certificate: %w", err)
 	}
-
 	// 直接通过腾讯云API检查新证书状态，而不是查找数据库记录
 	request := ssl.NewDescribeCertificateDetailRequest()
 	request.CertificateId = common.StringPtr(newCertID)
-
 	response, err := s.sslClient.DescribeCertificateDetail(request)
 	if err != nil {
 		return false, fmt.Errorf("查询新证书状态失败: %w", err)
 	}
-
 	status := *response.Response.Status
-
 	// 只有当新证书已通过时才进行切换
 	if status != 1 { // 1表示已通过
 		log.Printf("New certificate %s not ready yet, status: %s", newCertID, GetStatusText(status))
 		return false, nil
 	}
-
 	// 生成新证书的文件路径
 	newCertPath, newKeyPath := "", ""
 	// 下载新证书
@@ -365,7 +408,6 @@ func (s *TencentSSLService) handleRenewalCompletion(originalCertID, newCertID st
 		log.Printf("Warning: Failed to download new certificate %s: %v", newCertID, err)
 		return false, err
 	}
-
 	// 保存老证书文件路径，用于后续删除
 	oldCertPath := originalCert.CertPath
 	oldKeyPath := originalCert.KeyPath
@@ -379,10 +421,8 @@ func (s *TencentSSLService) handleRenewalCompletion(originalCertID, newCertID st
 	newCert.OriginalSourceID = originalCertID
 	// 保持一致
 	newCert.SourceID = newCertID
-
 	// 记录新证书ID用于追踪，但不作为主要标识
 	log.Printf("Certificate %s renewed with new Tencent Cloud cert %s", originalCertID, newCertID)
-
 	// 解析新证书的过期时间
 	if response.Response.CertEndTime != nil {
 		if expTime, parseErr := time.Parse("2006-01-02 15:04:05", *response.Response.CertEndTime); parseErr == nil {
@@ -393,12 +433,10 @@ func (s *TencentSSLService) handleRenewalCompletion(originalCertID, newCertID st
 	if err := s.db.Delete(&originalCert).Error; err != nil {
 		return false, fmt.Errorf("failed to delete old certificate record: %w", err)
 	}
-
 	// 保存更新后的证书记录
 	if err := s.db.Create(&newCert).Error; err != nil {
 		return false, fmt.Errorf("failed to add new certificate record: %w", err)
 	}
-
 	// 删除老证书文件
 	if oldCertPath != "" && oldCertPath != newCertPath {
 		if err := os.Remove(oldCertPath); err != nil {
@@ -407,7 +445,6 @@ func (s *TencentSSLService) handleRenewalCompletion(originalCertID, newCertID st
 			log.Printf("Successfully deleted old certificate file: %s", oldCertPath)
 		}
 	}
-
 	if oldKeyPath != "" && oldKeyPath != newKeyPath {
 		if err := os.Remove(oldKeyPath); err != nil {
 			log.Printf("Warning: Failed to delete old key file %s: %v", oldKeyPath, err)
@@ -437,7 +474,6 @@ func (s *TencentSSLService) updateNginxConfigForRenewal(originalCert, newCert db
 	if err := s.db.Where("ssl_cert = ? OR ssl_key = ?", originalCert.CertPath, originalCert.KeyPath).Find(&rules).Error; err != nil {
 		return false, fmt.Errorf("failed to find rules using original certificate: %w", err)
 	}
-
 	if len(rules) == 0 {
 		log.Printf("No nginx rules found using certificate %s", originalCert.SourceID)
 		return false, nil
@@ -446,17 +482,14 @@ func (s *TencentSSLService) updateNginxConfigForRenewal(originalCert, newCert db
 	// 更新每个规则的证书路径
 	for _, rule := range rules {
 		needUpdate := false
-
 		if rule.SSLCert == originalCert.CertPath {
 			rule.SSLCert = newCert.CertPath
 			needUpdate = true
 		}
-
 		if rule.SSLKey == originalCert.KeyPath {
 			rule.SSLKey = newCert.KeyPath
 			needUpdate = true
 		}
-
 		if needUpdate {
 			if err := s.db.Save(&rule).Error; err != nil {
 				log.Printf("Warning: Failed to update rule %s: %v", rule.ID, err)
@@ -476,13 +509,11 @@ func (s *TencentSSLService) UpdateCertificateName(certificateID, newName string)
 	if err := s.db.First(&certificate, "source_id = ? AND source = ?", certificateID, "tencent_cloud").Error; err != nil {
 		return fmt.Errorf("certificate not found: %w", err)
 	}
-
 	// 更新证书名称
 	certificate.Name = newName
 	if err := s.db.Save(&certificate).Error; err != nil {
 		return fmt.Errorf("failed to update certificate name: %w", err)
 	}
-
 	log.Printf("Certificate name updated: %s -> %s", certificateID, newName)
 	return nil
 }
@@ -494,9 +525,39 @@ func (s *TencentSSLService) revokeTencentCloudCertificate(certificateID string) 
 	request.CertificateId = common.StringPtr(certificateID)
 	request.Reason = common.StringPtr("nginx proxy")
 	// 吊销腾讯云端的证书
-	_, err := s.sslClient.RevokeCertificate(request)
+	rsp, err := s.sslClient.RevokeCertificate(request)
 	if err != nil {
-		return fmt.Errorf("吊销腾讯云证书失败: %w", err)
+		return fmt.Errorf("revoke tencent certificate failed: %w", err)
+	}
+	if rsp != nil && len(rsp.Response.RevokeDomainValidateAuths) != 0 {
+		descRequest := ssl.NewDescribeCertificateDetailRequest()
+		descRequest.CertificateId = common.StringPtr(certificateID)
+		if descResponse, err := s.sslClient.DescribeCertificateDetail(descRequest); err == nil &&
+			descResponse.Response.DvRevokeAuthDetail != nil && len(descResponse.Response.DvRevokeAuthDetail) != 0 {
+			detail := descResponse.Response.DvRevokeAuthDetail[0]
+			key := *detail.DvAuthSubDomain
+			value := *detail.DvAuthValue
+			domain := *detail.DvAuthDomain
+			s.startAuthProcess(key, value, domain, certificateID)
+			// 腾讯云做事只做一半 还要我来收尾 😤
+			record := db.AuthRecord{
+				ID:            uuid.New().String(),
+				Domain:        domain,
+				Key:           key,
+				Value:         value,
+				Type:          "TXT",
+				Source:        "tencent_cloud",
+				CertificateId: certificateID,
+			}
+			err := s.db.Create(&record)
+			if err != nil {
+				log.Printf("cannot add cleanup record to db: %v %v", record, err)
+			}
+		} else {
+			// 腾讯云数据不一致, 或者接口挂了
+			log.Printf("Warning: cannot create revoke post task which is remove-record")
+		}
+
 	}
 	log.Printf("Successfully revoke certificate %s from Tencent Cloud", certificateID)
 	return nil
@@ -508,7 +569,6 @@ func (s *TencentSSLService) DeleteTencentCertificate(certificateID string) error
 	if err := s.db.First(&certificate, "source_id = ? AND source = ?", certificateID, "tencent_cloud").Error; err != nil {
 		return fmt.Errorf("certificate not found: %w", err)
 	}
-
 	// 检查是否有规则在使用这个证书
 	var count int64
 	if err := s.db.Model(&db.Rule{}).Where("ssl_cert = ? OR ssl_key = ?", certificate.CertPath, certificate.KeyPath).Count(&count).Error; err != nil {
@@ -522,7 +582,6 @@ func (s *TencentSSLService) DeleteTencentCertificate(certificateID string) error
 	if err := s.revokeTencentCloudCertificate(certificateID); err != nil {
 		log.Printf("Warning: Failed to delete certificate from Tencent Cloud: %v", err)
 	}
-
 	// 删除本地文件
 	if certificate.CertPath != "" {
 		if err := os.Remove(certificate.CertPath); err != nil && !os.IsNotExist(err) {
@@ -534,12 +593,10 @@ func (s *TencentSSLService) DeleteTencentCertificate(certificateID string) error
 			log.Printf("Warning: Failed to delete key file: %v", err)
 		}
 	}
-
 	// 从数据库删除
 	if err := s.db.Delete(&certificate).Error; err != nil {
 		return fmt.Errorf("failed to delete certificate: %w", err)
 	}
-
 	log.Printf("Certificate record deleted: %s", certificateID)
 	return nil
 }
@@ -551,28 +608,23 @@ func (s *TencentSSLService) extractCertificateFromZip(zipContent, certPath, keyP
 	if err != nil {
 		return fmt.Errorf("failed to decode base64 zip content: %w", err)
 	}
-
 	// 创建ZIP读取器
 	zipReader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
 		return fmt.Errorf("failed to create zip reader: %w", err)
 	}
-
 	var certContent, keyContent string
-
 	// 遍历ZIP文件中的所有文件，只提取Nginx目录下的文件
 	for _, file := range zipReader.File {
 		// 只处理Nginx目录下的文件
 		if !strings.HasPrefix(file.Name, "Nginx/") {
 			continue
 		}
-
 		rc, err := file.Open()
 		if err != nil {
 			log.Printf("Warning: Failed to open file %s in zip: %v", file.Name, err)
 			continue
 		}
-
 		content, err := io.ReadAll(rc)
 		if closeErr := rc.Close(); closeErr != nil {
 			log.Printf("Warning: Failed to close file %s: %v", file.Name, closeErr)
@@ -581,20 +633,16 @@ func (s *TencentSSLService) extractCertificateFromZip(zipContent, certPath, keyP
 			log.Printf("Warning: Failed to read file %s: %v", file.Name, err)
 			continue
 		}
-
 		fileName := strings.ToLower(file.Name)
-
 		// 识别证书文件（bundle.crt包含完整证书链）
 		if strings.HasSuffix(fileName, "bundle.crt") || strings.HasSuffix(fileName, ".crt") {
 			certContent = string(content)
 		}
-
 		// 识别私钥文件（.key）
 		if strings.HasSuffix(fileName, ".key") {
 			keyContent = string(content)
 		}
 	}
-
 	// 检查是否找到了证书和私钥
 	if certContent == "" {
 		return fmt.Errorf("certificate file not found in Nginx directory")
@@ -602,17 +650,14 @@ func (s *TencentSSLService) extractCertificateFromZip(zipContent, certPath, keyP
 	if keyContent == "" {
 		return fmt.Errorf("private key file not found in Nginx directory")
 	}
-
 	// 保存证书文件
 	if err := os.WriteFile(certPath, []byte(certContent), 0644); err != nil {
 		return fmt.Errorf("failed to save certificate file: %w", err)
 	}
-
 	// 保存私钥文件
 	if err := os.WriteFile(keyPath, []byte(keyContent), 0600); err != nil {
 		return fmt.Errorf("failed to save key file: %w", err)
 	}
-
 	log.Printf("Successfully extracted Nginx certificate and key")
 	return nil
 }
@@ -641,6 +686,29 @@ func (s *TencentSSLService) parseCertificateExpiryFromFile(certPath string) (tim
 
 	return s.parseCertificateExpiry(string(certData))
 }
+
+func (s *TencentSSLService) addCloudflareDNSRecords(domain, key, value string) error {
+	// 获取 Zone ID
+	zoneID, err := s.cfAPI.ZoneIDByName(domain)
+	if err != nil {
+		return err
+	}
+	// 构造 DNS 记录
+	newRec := cloudflare.CreateDNSRecordParams{
+		Type:    "TXT", // A记录
+		Name:    key,   // 子域名，不带主域名部分也可以，如 "test" 表示 test.example.com
+		Content: value, // IP 地址
+		TTL:     120,   // 生存时间（秒），120 以上 或 1 为自动
+	}
+	// 创建记录
+	_, err = s.cfAPI.CreateDNSRecord(context.Background(), cloudflare.ZoneIdentifier(zoneID), newRec)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// ----------- JUST FOR SCRIPT -----------
 
 // TencentCertificateInfo 腾讯云证书信息
 type TencentCertificateInfo struct {

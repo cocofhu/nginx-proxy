@@ -716,6 +716,7 @@ func (s *TencentSSLService) addCloudflareDNSRecords(domain, key, value string) e
 	if err != nil {
 		return err
 	}
+	log.Printf("add txt record to cloudflare success: %v", newRec)
 	return nil
 }
 

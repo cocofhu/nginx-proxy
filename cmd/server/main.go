@@ -30,8 +30,8 @@ func main() {
 	}
 
 	log.SetOutput(&lumberjack.Logger{
-		Filename:   "./app.log", // 不直接加日期
-		MaxSize:    10,          // MB
+		Filename:   "./logs/app.log", // 不直接加日期
+		MaxSize:    10,               // MB
 		MaxBackups: 7,
 		MaxAge:     30, // 保留天数
 		Compress:   true,

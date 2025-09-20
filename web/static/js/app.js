@@ -1,263 +1,877 @@
-// 全局变量
-let currentPage = 'dashboard';
+// Toast 提示框类
+class Toast {
+    static show(message, type = 'info', duration = 3000) {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
 
-// DOM加载完成后初始化
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+
+        toast.innerHTML = `
+            <div class="toast-content">
+                <div class="toast-icon"></div>
+                <div class="toast-message">${message}</div>
+            </div>
+            <button class="toast-close">&times;</button>
+        `;
+
+        container.appendChild(toast);
+
+        // 显示动画
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 100);
+
+        // 关闭按钮事件
+        const closeBtn = toast.querySelector('.toast-close');
+        closeBtn.addEventListener('click', () => {
+            this.hide(toast);
+        });
+
+        // 自动关闭
+        if (duration > 0) {
+            setTimeout(() => {
+                this.hide(toast);
+            }, duration);
+        }
+
+        return toast;
+    }
+
+    static hide(toast) {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }
+
+    static success(message, duration = 3000) {
+        return this.show(message, 'success', duration);
+    }
+
+    static error(message, duration = 5000) {
+        return this.show(message, 'error', duration);
+    }
+
+    static warning(message, duration = 4000) {
+        return this.show(message, 'warning', duration);
+    }
+
+    static info(message, duration = 3000) {
+        return this.show(message, 'info', duration);
+    }
+}
+
+// 全局变量
+let currentCertificates = [];
+
+// 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function () {
     initializeApp();
 });
 
 // 初始化应用
 function initializeApp() {
-    setupEventListeners();
-    setupNavigation();
-    bindUpstreamEvents();
+    // 初始化导航
+    initNavigation();
+
+    // 默认显示仪表板
+    showPage('dashboard');
+
+    // 初始化模态框事件
+    initModals();
+
+    // 设置定时刷新证书列表
+    setInterval(() => {
+        if (document.getElementById('certificates-page').style.display !== 'none') {
+            loadTencentCertificates();
+        }
+    }, 30000); // 每30秒刷新一次
 }
 
-// 设置事件监听器
-function setupEventListeners() {
-    // 侧边栏切换
-    const sidebarToggle = document.getElementById('sidebar-toggle');
-    const sidebar = document.getElementById('sidebar');
-
-    sidebarToggle?.addEventListener('click', () => {
-        sidebar.classList.toggle('-translate-x-full');
-    });
-
-    // 添加代理按钮
-    const addProxyBtn = document.getElementById('add-proxy-btn');
-    const addProxyModal = document.getElementById('add-proxy-modal');
-    const closeModal = document.getElementById('close-modal');
-    const cancelAddProxy = document.getElementById('cancel-add-proxy');
-
-    addProxyBtn?.addEventListener('click', () => {
-        addProxyModal.classList.remove('hidden');
-        addProxyModal.classList.add('flex');
-    });
-
-    closeModal?.addEventListener('click', closeAddProxyModal);
-    cancelAddProxy?.addEventListener('click', closeAddProxyModal);
-
-    // 添加代理表单提交
-    const addProxyForm = document.getElementById('add-proxy-form');
-    addProxyForm?.addEventListener('submit', handleAddProxy);
-
-    // 添加分流规则按钮
-    const addUpstreamBtn = document.getElementById('add-upstream');
-    addUpstreamBtn?.addEventListener('click', addUpstreamConfig);
-
-    // 证书管理相关事件
-    const addCertificateBtn = document.getElementById('add-certificate-btn');
-    const addCertificateModal = document.getElementById('add-certificate-modal');
-    const closeCertificateModal = document.getElementById('close-certificate-modal');
-    const cancelAddCertificate = document.getElementById('cancel-add-certificate');
-
-    addCertificateBtn?.addEventListener('click', () => {
-        addCertificateModal.classList.remove('hidden');
-        addCertificateModal.classList.add('flex');
-    });
-
-    closeCertificateModal?.addEventListener('click', closeAddCertificateModal);
-    cancelAddCertificate?.addEventListener('click', closeAddCertificateModal);
-
-    // 证书上传表单提交
-    const addCertificateForm = document.getElementById('add-certificate-form');
-    addCertificateForm?.addEventListener('submit', handleAddCertificate);
-
-    // SSL复选框变化事件
-    const sslCheckbox = document.getElementById('proxy-ssl');
-    const sslConfig = document.getElementById('ssl-config');
-    sslCheckbox?.addEventListener('change', function () {
-        if (this.checked) {
-            sslConfig.classList.remove('hidden');
-            loadCertificatesForSelect();
-        } else {
-            sslConfig.classList.add('hidden');
-        }
-    });
-
-    // 编辑代理相关事件
-    const closeEditModal = document.getElementById('close-edit-modal');
-    const cancelEditProxy = document.getElementById('cancel-edit-proxy');
-
-    closeEditModal?.addEventListener('click', closeEditProxyModal);
-    cancelEditProxy?.addEventListener('click', closeEditProxyModal);
-
-    // 编辑代理表单提交
-    const editProxyForm = document.getElementById('edit-proxy-form');
-    editProxyForm?.addEventListener('submit', handleEditProxy);
-
-    // 编辑分流规则按钮
-    const editAddUpstreamBtn = document.getElementById('edit-add-upstream');
-    editAddUpstreamBtn?.addEventListener('click', () => addEditUpstreamConfig());
-
-    // 编辑SSL复选框变化事件
-    const editSslCheckbox = document.getElementById('edit-proxy-ssl');
-    const editSslConfig = document.getElementById('edit-ssl-config');
-    editSslCheckbox?.addEventListener('change', function () {
-        if (this.checked) {
-            editSslConfig.classList.remove('hidden');
-            loadCertificatesForEditSelect();
-        } else {
-            editSslConfig.classList.add('hidden');
-        }
-    });
-}
-
-// 设置导航
-function setupNavigation() {
+// 初始化导航
+function initNavigation() {
     const navItems = document.querySelectorAll('.nav-item');
-
     navItems.forEach(item => {
-        item.addEventListener('click', (e) => {
+        item.addEventListener('click', function (e) {
             e.preventDefault();
-            const href = item.getAttribute('href');
-            const page = href.substring(1);
-            navigateToPage(page);
+            const href = this.getAttribute('href');
+            const page = href.substring(1); // 移除 # 号
+            showPage(page);
         });
     });
+
+    // 仪表板按钮事件
+    const dashboardButtons = document.querySelectorAll('button[onclick*="showPage"]');
+    dashboardButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const page = this.getAttribute('onclick').match(/'([^']+)'/)[1];
+            showPage(page);
+        });
+    });
+
+    // 侧边栏切换按钮事件
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const sidebar = document.getElementById('sidebar');
+    
+    if (sidebarToggle && sidebar) {
+        sidebarToggle.addEventListener('click', function() {
+            // 切换侧边栏显示状态
+            sidebar.classList.toggle('-translate-x-full');
+            
+            // 添加遮罩层（移动端）
+            if (!sidebar.classList.contains('-translate-x-full')) {
+                // 显示侧边栏时添加遮罩
+                const overlay = document.createElement('div');
+                overlay.id = 'sidebar-overlay';
+                overlay.className = 'fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden';
+                overlay.addEventListener('click', function() {
+                    // 点击遮罩关闭侧边栏
+                    sidebar.classList.add('-translate-x-full');
+                    overlay.remove();
+                });
+                document.body.appendChild(overlay);
+            } else {
+                // 隐藏侧边栏时移除遮罩
+                const overlay = document.getElementById('sidebar-overlay');
+                if (overlay) {
+                    overlay.remove();
+                }
+            }
+        });
+    }
 }
 
-// 页面导航
-function navigateToPage(page) {
+// 显示页面
+function showPage(page) {
     // 隐藏所有页面
-    const pages = document.querySelectorAll('.page-content');
-    pages.forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.page-content').forEach(content => {
+        content.classList.add('hidden');
+    });
 
     // 显示目标页面
     const targetPage = document.getElementById(`${page}-page`);
     if (targetPage) {
         targetPage.classList.remove('hidden');
-        currentPage = page;
-
-        // 更新导航状态
-        updateNavigation(page);
-
-        // 加载页面数据
-        loadPageData(page);
     }
-}
 
-// showPage 函数别名，供HTML中的按钮调用
-window.showPage = function (page) {
-    navigateToPage(page);
-};
-
-// 更新导航状态
-function updateNavigation(activePage) {
-    const navItems = document.querySelectorAll('.nav-item');
-    navItems.forEach(item => {
-        const href = item.getAttribute('href');
-        const page = href.substring(1);
-
-        if (page === activePage) {
-            item.classList.add('bg-blue-50', 'text-blue-600');
-        } else {
-            item.classList.remove('bg-blue-50', 'text-blue-600');
-        }
+    // 更新导航状态
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('bg-blue-50', 'text-blue-600');
+        item.classList.add('text-gray-700');
     });
-}
 
+    const activeNav = document.querySelector(`a[href="#${page}"]`);
+    if (activeNav) {
+        activeNav.classList.remove('text-gray-700');
+        activeNav.classList.add('bg-blue-50', 'text-blue-600');
+    }
 
-// 加载页面数据
-function loadPageData(page) {
-    switch (page) {
-        case 'proxies':
-            loadProxiesData();
-            break;
-        case 'certificates':
-            loadCertificatesData();
-            break;
+    // 加载页面数据
+    if (page === 'certificates') {
+        loadTencentCertificates();
+    } else if (page === 'proxies') {
+        loadProxies();
     }
 }
 
-// 加载代理数据
-async function loadProxiesData() {
-    const proxiesTable = document.getElementById('proxies-table');
-    if (!proxiesTable) return;
+// 初始化模态框
+function initModals() {
+    // 添加代理按钮
+    const addProxyBtn = document.getElementById('add-proxy-btn');
+    if (addProxyBtn) {
+        addProxyBtn.addEventListener('click', function () {
+            document.getElementById('add-proxy-modal').classList.remove('hidden');
+            document.getElementById('add-proxy-modal').classList.add('flex');
+            // 先加载证书数据，然后填充选择框
+            loadCertificatesData().then(() => {
+                loadCertificatesForSelect();
+            });
+        });
+    }
 
-    try {
-        const response = await apiCall('/rules');
-        const rules = response.rules || [];
+    // 关闭添加代理模态框
+    const closeModalBtn = document.getElementById('close-modal');
+    const cancelAddProxyBtn = document.getElementById('cancel-add-proxy');
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener('click', function () {
+            document.getElementById('add-proxy-modal').classList.add('hidden');
+            document.getElementById('add-proxy-modal').classList.remove('flex');
+        });
+    }
+    if (cancelAddProxyBtn) {
+        cancelAddProxyBtn.addEventListener('click', function () {
+            document.getElementById('add-proxy-modal').classList.add('hidden');
+            document.getElementById('add-proxy-modal').classList.remove('flex');
+        });
+    }
 
-        proxiesTable.innerHTML = rules.map(rule => {
-            // 生成目标地址和路由条件的显示
-            const targetInfo = rule.locations.map(loc => {
-                return loc.upstreams.map(up => {
-                    let info = up.target;
-                    const conditions = [];
+    // 添加代理表单提交
+    const addProxyForm = document.getElementById('add-proxy-form');
+    if (addProxyForm) {
+        addProxyForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            createProxy();
+        });
+    }
 
-                    if (up.condition_ip && up.condition_ip !== '0.0.0.0/0') {
-                        conditions.push(`IP: ${up.condition_ip}`);
-                    }
+    // SSL复选框事件
+    const sslCheckbox = document.getElementById('proxy-ssl');
+    if (sslCheckbox) {
+        sslCheckbox.addEventListener('change', function () {
+            const sslConfig = document.getElementById('ssl-config');
+            if (this.checked) {
+                sslConfig.classList.remove('hidden');
+                // 当启用SSL时，确保证书列表是最新的
+                if (currentCertificates && currentCertificates.length > 0) {
+                    loadCertificatesForSelect();
+                } else {
+                    loadCertificatesData().then(() => {
+                        loadCertificatesForSelect();
+                    });
+                }
+            } else {
+                sslConfig.classList.add('hidden');
+            }
+        });
+    }
 
-                    if (up.headers && Object.keys(up.headers).length > 0) {
-                        const headerStr = Object.entries(up.headers)
-                            .map(([k, v]) => `${k}=${v}`)
-                            .join(', ');
-                        conditions.push(`Headers: ${headerStr}`);
-                    }
+    // 添加分流规则按钮
+    const addUpstreamBtn = document.getElementById('add-upstream');
+    if (addUpstreamBtn) {
+        addUpstreamBtn.addEventListener('click', function () {
+            addUpstreamConfig();
+        });
+    }
 
-                    if (conditions.length > 0) {
-                        info += ` <small class="text-gray-400">(${conditions.join('; ')})</small>`;
-                    }
+    // 申请腾讯云证书按钮
+    const applyTencentBtn = document.getElementById('apply-tencent-certificate-btn');
+    if (applyTencentBtn) {
+        applyTencentBtn.addEventListener('click', function () {
+            document.getElementById('apply-tencent-certificate-modal').classList.remove('hidden');
+            document.getElementById('apply-tencent-certificate-modal').classList.add('flex');
+        });
+    }
 
-                    return info;
-                }).join('<br>');
-            }).join('<br>');
+    // 批量续期按钮
+    const batchRenewBtn = document.getElementById('batch-renew-tencent-certificates-btn');
+    if (batchRenewBtn) {
+        batchRenewBtn.addEventListener('click', function () {
+            batchRenewTencentCertificates();
+        });
+    }
 
-            return `
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${rule.server_name}</td>
-                    <td class="px-6 py-4 text-sm text-gray-500">${targetInfo}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                            活跃
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ${rule.ssl_cert ? '<i class="fas fa-lock text-green-600"></i>' : '<i class="fas fa-unlock text-red-600"></i>'}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button onclick="editRule('${rule.id}')" class="text-indigo-600 hover:text-indigo-900 mr-3">编辑</button>
-                        <button onclick="deleteRule('${rule.id}')" class="text-red-600 hover:text-red-900">删除</button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+    // 关闭模态框按钮
+    const closeTencentBtn = document.getElementById('close-tencent-certificate-modal');
+    if (closeTencentBtn) {
+        closeTencentBtn.addEventListener('click', function () {
+            document.getElementById('apply-tencent-certificate-modal').classList.add('hidden');
+            document.getElementById('apply-tencent-certificate-modal').classList.remove('flex');
+        });
+    }
 
-    } catch (error) {
-        console.error('Failed to load proxies data:', error);
-        proxiesTable.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-500">加载失败</td></tr>';
+    // 取消按钮
+    const cancelTencentBtn = document.getElementById('cancel-apply-tencent-certificate');
+    if (cancelTencentBtn) {
+        cancelTencentBtn.addEventListener('click', function () {
+            document.getElementById('apply-tencent-certificate-modal').classList.add('hidden');
+            document.getElementById('apply-tencent-certificate-modal').classList.remove('flex');
+        });
+    }
+
+    // 申请表单提交
+    const applyForm = document.getElementById('apply-tencent-certificate-form');
+    if (applyForm) {
+        applyForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            applyTencentCertificate();
+        });
+    }
+
+    // 上传证书按钮
+    const addCertBtn = document.getElementById('add-certificate-btn');
+    if (addCertBtn) {
+        addCertBtn.addEventListener('click', function () {
+            document.getElementById('add-certificate-modal').classList.remove('hidden');
+            document.getElementById('add-certificate-modal').classList.add('flex');
+        });
+    }
+
+    // 关闭上传证书模态框
+    const closeCertModal = document.getElementById('close-certificate-modal');
+    const cancelAddCert = document.getElementById('cancel-add-certificate');
+    if (closeCertModal) {
+        closeCertModal.addEventListener('click', function () {
+            document.getElementById('add-certificate-modal').classList.add('hidden');
+            document.getElementById('add-certificate-modal').classList.remove('flex');
+        });
+    }
+    if (cancelAddCert) {
+        cancelAddCert.addEventListener('click', function () {
+            document.getElementById('add-certificate-modal').classList.add('hidden');
+            document.getElementById('add-certificate-modal').classList.remove('flex');
+        });
+    }
+
+    // 上传证书表单提交
+    const uploadForm = document.getElementById('add-certificate-form');
+    if (uploadForm) {
+        uploadForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            console.log('Upload form submitted'); // 调试日志
+            uploadCertificate();
+        });
+    }
+
+    // 编辑代理模态框事件
+    const closeEditModalBtn = document.getElementById('close-edit-modal');
+    const cancelEditProxyBtn = document.getElementById('cancel-edit-proxy');
+    if (closeEditModalBtn) {
+        closeEditModalBtn.addEventListener('click', function () {
+            document.getElementById('edit-proxy-modal').classList.add('hidden');
+            document.getElementById('edit-proxy-modal').classList.remove('flex');
+        });
+    }
+    if (cancelEditProxyBtn) {
+        cancelEditProxyBtn.addEventListener('click', function () {
+            document.getElementById('edit-proxy-modal').classList.add('hidden');
+            document.getElementById('edit-proxy-modal').classList.remove('flex');
+        });
+    }
+
+    // 编辑代理表单提交
+    const editProxyForm = document.getElementById('edit-proxy-form');
+    if (editProxyForm) {
+        editProxyForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            updateProxy();
+        });
+    }
+
+    // 编辑模式的SSL复选框事件
+    const editSslCheckbox = document.getElementById('edit-proxy-ssl');
+    if (editSslCheckbox) {
+        editSslCheckbox.addEventListener('change', function () {
+            const sslConfig = document.getElementById('edit-ssl-config');
+            if (this.checked) {
+                sslConfig.classList.remove('hidden');
+                // 当启用SSL时，确保证书列表是最新的
+                if (currentCertificates && currentCertificates.length > 0) {
+                    loadCertificatesForEditSelect();
+                } else {
+                    loadCertificatesData().then(() => {
+                        loadCertificatesForEditSelect();
+                    });
+                }
+            } else {
+                sslConfig.classList.add('hidden');
+            }
+        });
+    }
+
+    // 编辑模式添加分流规则按钮
+    const editAddUpstreamBtn = document.getElementById('edit-add-upstream');
+    if (editAddUpstreamBtn) {
+        editAddUpstreamBtn.addEventListener('click', function () {
+            addEditUpstreamConfig();
+        });
     }
 }
 
+// 加载所有证书列表（包括腾讯云和上传的证书）
+function loadTencentCertificates() {
+    // 使用统一的证书列表接口
+    fetch('/api/certificates')
+        .then(response => response.json())
+        .then(data => {
+            const allCertificates = data.certificates || [];
+            currentCertificates = allCertificates;
+            displayTencentCertificates(currentCertificates);
+        })
+        .catch(error => {
+            console.error('Error loading certificates:', error);
+            const container = document.getElementById('certificates-table');
+            if (container) {
+                container.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-red-500">加载证书列表失败</td></tr>';
+            }
+        });
+}
 
-// 关闭添加代理模态框
-function closeAddProxyModal() {
-    const modal = document.getElementById('add-proxy-modal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
+// 获取过期时间显示文本
+function getExpiryDisplay(cert) {
+    if (!cert.expires_at) {
+        // 根据证书状态判断显示内容
+        const status = getCertificateStatus(cert);
+        if (status === 'issuing') {
+            return '申请中';
+        }
+        return '未知';
+    }
 
-    // 清空表单
-    document.getElementById('add-proxy-form').reset();
+    const expiryDate = new Date(cert.expires_at);
+    // 检查是否为有效日期
+    if (isNaN(expiryDate.getTime()) || expiryDate.getFullYear() < 2000) {
+        const status = getCertificateStatus(cert);
+        if (status === 'issuing') {
+            return '申请中';
+        }
+        return '未知';
+    }
+
+    return expiryDate.toLocaleDateString();
+}
+
+// 显示腾讯云证书列表
+function displayTencentCertificates(certificates) {
+    const container = document.getElementById('certificates-table');
+
+    if (!container) {
+        console.error('Certificate table container not found');
+        return;
+    }
+
+    if (!certificates || certificates.length === 0) {
+        container.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">暂无证书</td></tr>';
+        return;
+    }
+
+    const html = certificates.map(cert => {
+        const actualStatus = getCertificateStatus(cert);
+        const statusClass = getStatusClass(actualStatus);
+        const statusText = getStatusText(actualStatus);
+        const expiresAt = getExpiryDisplay(cert);
+
+        return `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <span class="text-sm font-medium text-gray-900">${cert.name}</span>
+                        <button onclick="editCertificateName('${cert.source === 'upload' ? cert.id : cert.source_id}', '${cert.name}', '${cert.source}')" 
+                                class="ml-2 text-blue-600 hover:text-blue-800 text-xs">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${cert.domain}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${expiresAt}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass}">
+                        ${statusText}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${cert.source === 'upload' ? '本地上传' : '腾讯云'}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div class="flex space-x-2">
+                        ${getCertificateActions(cert)}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+// 获取状态CSS类
+function getStatusClass(status) {
+    const statusMap = {
+        'active': 'bg-green-100 text-green-800',
+        'expired': 'bg-red-100 text-red-800',
+        'expiring': 'bg-yellow-100 text-yellow-800',
+        'renewing': 'bg-blue-100 text-blue-800',
+        'issuing': 'bg-orange-100 text-orange-800'
+    };
+    return statusMap[status] || 'bg-gray-100 text-gray-800';
+}
+
+// 获取证书实际状态（考虑证书文件是否存在和过期时间）
+function getCertificateStatus(cert) {
+    // 如果没有证书文件路径，说明还在颁发中
+    if (!cert.cert_path || cert.cert_path === '') {
+        return 'issuing';
+    }
+
+    // 如果有明确的状态且不为空，优先使用
+    if (cert.status && cert.status !== '') {
+        // 对于腾讯云证书，如果状态是 renewing，直接返回
+        if (cert.status === 'renewing') {
+            return 'renewing';
+        }
+    }
+
+    // 根据过期时间判断状态
+    if (cert.expires_at) {
+        const expiryDate = new Date(cert.expires_at);
+        const now = new Date();
+        const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+
+        if (daysUntilExpiry < 0) {
+            return 'expired';
+        } else if (daysUntilExpiry <= 30) {
+            return 'expiring';
+        } else {
+            return 'active';
+        }
+    }
+
+    // 如果没有过期时间信息，返回原始状态或默认为 active
+    return cert.status || 'active';
+}
+
+// 获取状态文本
+function getStatusText(status) {
+    const statusMap = {
+        'active': '正常',
+        'expired': '已过期',
+        'expiring': '即将过期',
+        'renewing': '续期中',
+        'issuing': '颁发中'
+    };
+    return statusMap[status] || '未知状态';
+}
+
+// 获取证书操作按钮
+function getCertificateActions(cert) {
+    let actions = [];
+
+    // 获取证书的实际状态
+    const actualStatus = getCertificateStatus(cert);
+
+    // 下载按钮 - 只有腾讯云证书且有证书文件才支持下载
+    if (cert.source === 'tencent_cloud' && cert.cert_path && cert.cert_path !== '') {
+        actions.push(`
+            <button onclick="downloadTencentCertificate('${cert.source_id}')" 
+                    class="text-blue-600 hover:text-blue-900 text-xs inline-flex items-center"
+                    title="下载证书文件">
+                <i class="fas fa-download mr-1"></i> 下载
+            </button>
+        `);
+    }
+
+    // 续期按钮 - 只有腾讯云证书才显示续期按钮
+    if (cert.source === 'tencent_cloud') {
+        if (actualStatus === 'issuing') {
+            // 颁发中状态显示等待状态
+            actions.push(`
+                <button disabled class="text-gray-400 text-xs cursor-not-allowed inline-flex items-center"
+                        title="证书正在颁发中">
+                    <i class="fas fa-clock mr-1"></i> 颁发中
+                </button>
+            `);
+        } else if (cert.status === 'renewing') {
+            actions.push(`
+                <button disabled class="text-orange-400 text-xs cursor-not-allowed inline-flex items-center"
+                        title="证书正在续期中">
+                    <i class="fas fa-spinner fa-spin mr-1"></i> 续期中
+                </button>
+            `);
+        } else {
+            const renewTitle = actualStatus === 'expired' ? '证书已过期，立即续期' :
+                actualStatus === 'expiring' ? '证书即将过期，建议续期' : '续期证书';
+            const renewClass = actualStatus === 'expired' ? 'text-red-600 hover:text-red-900' :
+                actualStatus === 'expiring' ? 'text-orange-600 hover:text-orange-900' :
+                    'text-yellow-600 hover:text-yellow-900';
+
+            actions.push(`
+                <button onclick="renewTencentCertificate('${cert.source_id}')" 
+                        class="${renewClass} text-xs inline-flex items-center"
+                        title="${renewTitle}">
+                    <i class="fas fa-sync-alt mr-1"></i> 续期
+                </button>
+            `);
+        }
+    }
+
+    // 检查状态按钮 - 只有腾讯云证书才有检查状态功能
+    if (cert.source === 'tencent_cloud') {
+        actions.push(`
+            <button onclick="checkTencentCertificateStatus('${cert.source_id}')" 
+                    class="text-green-600 hover:text-green-900 text-xs inline-flex items-center"
+                    title="检查证书最新状态">
+                <i class="fas fa-sync mr-1"></i> 检查
+            </button>
+        `);
+    }
+
+    // 删除按钮
+    if (cert.source === 'tencent_cloud') {
+        actions.push(`
+            <button onclick="deleteTencentCertificate('${cert.source_id}')" 
+                    class="text-red-600 hover:text-red-900 text-xs inline-flex items-center"
+                    title="删除证书">
+                <i class="fas fa-trash mr-1"></i> 删除
+            </button>
+        `);
+    } else {
+        actions.push(`
+            <button onclick="deleteUploadedCertificate('${cert.id}')" 
+                    class="text-red-600 hover:text-red-900 text-xs inline-flex items-center"
+                    title="删除证书">
+                <i class="fas fa-trash mr-1"></i> 删除
+            </button>
+        `);
+    }
+
+    return actions.join(' ');
+}
+
+// 申请腾讯云证书
+function applyTencentCertificate() {
+    const domain = document.getElementById('tencent-domain').value.trim();
+    const alias = document.getElementById('tencent-cert-alias').value.trim();
+    const validateType = document.getElementById('tencent-validate-type').value;
+
+    if (!domain) {
+        Toast.warning('请输入域名');
+        return;
+    }
+
+    const submitBtn = document.querySelector('#apply-tencent-certificate-form button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 申请中...';
+    submitBtn.disabled = true;
+
+    fetch('/api/certificates/tencent/apply', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            domain: domain,
+            cert_alias: alias || domain,
+            validate_type: validateType
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('申请证书失败: ' + data.error);
+            } else {
+                Toast.success('证书申请成功，证书ID: ' + data.certificate_id);
+                // 关闭模态框
+                document.getElementById('apply-tencent-certificate-modal').classList.add('hidden');
+                document.getElementById('apply-tencent-certificate-modal').classList.remove('flex');
+                // 清空表单
+                document.getElementById('tencent-domain').value = '';
+                document.getElementById('tencent-cert-alias').value = '';
+                // 重新加载证书列表
+                loadTencentCertificates();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('申请证书失败');
+        })
+        .finally(() => {
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        });
+}
+
+// 加载代理列表
+function loadProxies() {
+    fetch('/api/rules')
+        .then(response => response.json())
+        .then(data => {
+            const rules = data.rules || [];
+            displayProxies(rules);
+        })
+        .catch(error => {
+            console.error('Error loading proxies:', error);
+            const container = document.getElementById('proxies-table');
+            if (container) {
+                container.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-red-500">加载代理列表失败</td></tr>';
+            }
+        });
+}
+
+// 显示代理列表
+function displayProxies(rules) {
+    const container = document.getElementById('proxies-table');
+
+    if (!container) {
+        console.error('Proxies table container not found');
+        return;
+    }
+
+    if (!rules || rules.length === 0) {
+        container.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-500">暂无代理配置</td></tr>';
+        return;
+    }
+
+    const html = rules.map(rule => {
+        const hasSSL = rule.ssl_cert && rule.ssl_key;
+        const statusClass = rule.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+        const statusText = rule.enabled ? '启用' : '禁用';
+
+        // 获取第一个location的target作为显示
+        const firstTarget = rule.locations && rule.locations.length > 0 ?
+            (rule.locations[0].upstreams && rule.locations[0].upstreams.length > 0 ?
+                rule.locations[0].upstreams[0].target : '未配置') : '未配置';
+
+        return `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${rule.server_name}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${firstTarget}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass}">
+                        ${statusText}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${hasSSL ? '<i class="fas fa-lock text-green-600"></i> 已启用' : '<i class="fas fa-unlock text-gray-400"></i> 未启用'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div class="flex space-x-2">
+                        <button onclick="editProxy('${rule.id}')" class="text-blue-600 hover:text-blue-900 text-xs">
+                            <i class="fas fa-edit"></i> 编辑
+                        </button>
+                        <button onclick="deleteProxy('${rule.id}')" class="text-red-600 hover:text-red-900 text-xs">
+                            <i class="fas fa-trash"></i> 删除
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+// 创建代理
+function createProxy() {
+    const domain = document.getElementById('proxy-domain').value.trim();
+    const path = document.getElementById('proxy-path').value.trim() || '/';
+    const sslEnabled = document.getElementById('proxy-ssl').checked;
+    const httpRedirectElement = document.getElementById('proxy-http-redirect');
+    const httpRedirect = httpRedirectElement ? httpRedirectElement.checked : true; // 默认启用HTTP重定向
+    const certificateId = document.getElementById('proxy-certificate').value;
+
+    if (!domain) {
+        Toast.warning('请输入域名');
+        return;
+    }
+
+    // 收集分流配置
+    const upstreamConfigs = [];
+    const upstreamElements = document.querySelectorAll('.upstream-config');
+
+    upstreamElements.forEach(element => {
+        const condition = element.querySelector('.upstream-condition').value.trim();
+        const target = element.querySelector('.upstream-target').value.trim();
+
+        if (!target) {
+            Toast.warning('请填写目标地址');
+            return;
+        }
+
+        // 收集头部条件
+        const headers = {};
+        const headerPairs = element.querySelectorAll('.header-pair');
+        headerPairs.forEach(pair => {
+            const key = pair.querySelector('.header-key').value.trim();
+            const value = pair.querySelector('.header-value').value.trim();
+            if (key && value) {
+                headers[key] = value;
+            }
+        });
+
+        upstreamConfigs.push({
+            target: target,
+            condition_ip: condition || '0.0.0.0/0',
+            headers: headers
+        });
+    });
+
+    if (upstreamConfigs.length === 0) {
+        Toast.warning('请至少配置一个分流规则');
+        return;
+    }
+
+    // 构建请求数据
+    let listenPorts = [80]; // 默认启用HTTP 80
+
+    if (sslEnabled) {
+        listenPorts.push(443); // 启用HTTPS 443
+        if (!httpRedirect) {
+            // 如果不启用HTTP重定向，则只使用HTTPS端口
+            listenPorts = [443];
+        }
+    }
+
+    const requestData = {
+        server_name: domain,
+        listen_ports: listenPorts,
+        locations: [{
+            path: path,
+            upstreams: upstreamConfigs
+        }]
+    };
+
+    // 如果启用SSL且选择了证书，添加证书配置
+    if (sslEnabled && certificateId) {
+        // 从当前证书列表中找到对应的证书
+        const selectedCert = currentCertificates.find(cert =>
+            (cert.source === 'upload' ? cert.id : cert.source_id) === certificateId
+        );
+
+        if (selectedCert) {
+            requestData.ssl_cert = selectedCert.cert_path;
+            requestData.ssl_key = selectedCert.key_path;
+        }
+    }
+
+    const submitBtn = document.querySelector('#add-proxy-form button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 创建中...';
+    submitBtn.disabled = true;
+
+    fetch('/api/rules', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('创建代理失败: ' + data.error);
+            } else {
+                Toast.success('代理创建成功');
+                // 关闭模态框
+                document.getElementById('add-proxy-modal').classList.add('hidden');
+                document.getElementById('add-proxy-modal').classList.remove('flex');
+                // 清空表单
+                resetProxyForm();
+                // 重新加载代理列表
+                loadProxies();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('创建代理失败');
+        })
+        .finally(() => {
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        });
+}
+
+// 重置代理表单
+function resetProxyForm() {
+    document.getElementById('proxy-domain').value = '';
+    document.getElementById('proxy-path').value = '/';
+    document.getElementById('proxy-ssl').checked = false;
+    document.getElementById('ssl-config').classList.add('hidden');
+    document.getElementById('proxy-certificate').value = '';
+    document.getElementById('proxy-http-redirect').checked = true; // 默认启用HTTP重定向
 
     // 重置分流配置为默认状态
     const upstreamContainer = document.getElementById('upstream-configs');
-    upstreamContainer.innerHTML = createDefaultUpstreamConfig();
-
-    // 重新绑定事件
-    bindUpstreamEvents();
-
-    // 重置SSL配置
-    const sslCheckbox = document.getElementById('proxy-ssl');
-    const sslConfig = document.getElementById('ssl-config');
-    sslCheckbox.checked = false;
-    sslConfig.classList.add('hidden');
-}
-
-// 创建默认的upstream配置HTML
-function createDefaultUpstreamConfig() {
-    return `
+    upstreamContainer.innerHTML = `
         <div class="upstream-config border border-gray-200 rounded-md p-3">
             <div class="grid grid-cols-2 gap-2 mb-2">
                 <div>
@@ -281,16 +895,9 @@ function createDefaultUpstreamConfig() {
             </div>
         </div>
     `;
-}
 
-// 绑定upstream相关事件
-function bindUpstreamEvents() {
-    // 绑定添加头部按钮事件
-    document.querySelectorAll('.add-header-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            addHeaderPair(this.closest('.upstream-headers'));
-        });
-    });
+    // 重新绑定事件
+    bindUpstreamEvents();
 }
 
 // 添加分流配置
@@ -302,11 +909,11 @@ function addUpstreamConfig() {
         <div class="grid grid-cols-2 gap-2 mb-2">
             <div>
                 <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
-                <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="192.168.1.0/24">
+                <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="0.0.0.0/0">
             </div>
             <div>
                 <label class="block text-xs text-gray-600 mb-1">目标地址</label>
-                <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://internal-server:8080">
+                <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000">
             </div>
         </div>
         <div>
@@ -319,402 +926,416 @@ function addUpstreamConfig() {
                 </div>
             </div>
         </div>
-        <button type="button" class="remove-upstream mt-2 text-xs text-red-600 hover:text-red-800">移除</button>
-    `;
-
-    // 添加移除按钮事件
-    newConfig.querySelector('.remove-upstream').addEventListener('click', function () {
-        newConfig.remove();
-    });
-
-    // 添加头部按钮事件
-    newConfig.querySelector('.add-header-btn').addEventListener('click', function () {
-        addHeaderPair(this.closest('.upstream-headers'));
-    });
-
-    container.appendChild(newConfig);
-}
-
-// 添加头部键值对
-function addHeaderPair(headersContainer) {
-    // 先将现有的"+"按钮改为"-"按钮
-    const existingAddBtn = headersContainer.querySelector('.add-header-btn');
-    if (existingAddBtn) {
-        existingAddBtn.textContent = '-';
-        existingAddBtn.className = 'remove-header-btn text-red-600 hover:text-red-800 px-2';
-        existingAddBtn.removeEventListener('click', arguments.callee);
-        existingAddBtn.addEventListener('click', function () {
-            existingAddBtn.closest('.header-pair').remove();
-        });
-    }
-
-    const newHeaderPair = document.createElement('div');
-    newHeaderPair.className = 'header-pair flex gap-2';
-    newHeaderPair.innerHTML = `
-        <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称">
-        <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值">
-        <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
-    `;
-
-    // 添加新的"+"按钮事件
-    newHeaderPair.querySelector('.add-header-btn').addEventListener('click', function () {
-        addHeaderPair(headersContainer);
-    });
-
-    headersContainer.appendChild(newHeaderPair);
-}
-
-// 处理添加代理
-async function handleAddProxy(e) {
-    e.preventDefault();
-
-    const domain = document.getElementById('proxy-domain').value;
-    const path = document.getElementById('proxy-path').value || '/';
-    const ssl = document.getElementById('proxy-ssl').checked;
-    const certificateId = document.getElementById('proxy-certificate').value;
-
-    // 收集所有分流配置
-    const upstreamConfigs = [];
-    const upstreamElements = document.querySelectorAll('.upstream-config');
-
-    upstreamElements.forEach(element => {
-        const condition = element.querySelector('.upstream-condition').value.trim();
-        const target = element.querySelector('.upstream-target').value.trim();
-
-        if (condition && target) {
-            const upstream = {
-                condition_ip: condition,
-                target: target
-            };
-
-            // 收集头部信息
-            const headers = {};
-            const headerPairs = element.querySelectorAll('.header-pair');
-            headerPairs.forEach(pair => {
-                const key = pair.querySelector('.header-key').value.trim();
-                const value = pair.querySelector('.header-value').value.trim();
-                if (key && value) {
-                    headers[key] = value;
-                }
-            });
-
-            if (Object.keys(headers).length > 0) {
-                upstream.headers = headers;
-            }
-
-            upstreamConfigs.push(upstream);
-        }
-    });
-
-    if (upstreamConfigs.length === 0) {
-        showNotification('请至少配置一个分流规则', 'warning');
-        return;
-    }
-
-    let sslCert = '';
-    let sslKey = '';
-
-    if (ssl && certificateId) {
-        // 获取选中的证书信息
-        try {
-            const certResponse = await apiCall(`/certificates/${certificateId}`);
-            sslCert = certResponse.cert_path;
-            sslKey = certResponse.key_path;
-        } catch (error) {
-            showNotification('获取证书信息失败', 'error');
-            return;
-        }
-    }
-
-    const ruleData = {
-        server_name: domain,
-        listen_ports: ssl ? [443] : [80],
-        ssl_cert: sslCert,
-        ssl_key: sslKey,
-        locations: [{
-            path: path,
-            upstreams: upstreamConfigs
-        }]
-    };
-
-    try {
-        await apiCall('/rules', 'POST', ruleData);
-        showNotification('代理配置已添加', 'success');
-        closeAddProxyModal();
-
-        // 重新加载代理列表
-        if (currentPage === 'proxies') {
-            loadProxiesData();
-        }
-
-    } catch (error) {
-        console.error('Failed to add proxy:', error);
-        showNotification('添加代理失败: ' + error.message, 'error');
-    }
-}
-
-
-// 显示通知
-function showNotification(message, type = 'info') {
-    // 创建通知元素
-    const notification = document.createElement('div');
-    notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 transform translate-x-full`;
-
-    // 根据类型设置样式
-    switch (type) {
-        case 'success':
-            notification.classList.add('bg-green-500', 'text-white');
-            break;
-        case 'error':
-            notification.classList.add('bg-red-500', 'text-white');
-            break;
-        case 'warning':
-            notification.classList.add('bg-yellow-500', 'text-white');
-            break;
-        default:
-            notification.classList.add('bg-blue-500', 'text-white');
-    }
-
-    notification.innerHTML = `
-        <div class="flex items-center">
-            <span>${message}</span>
-            <button class="ml-4 text-white hover:text-gray-200" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
+        <div class="mt-2">
+            <button type="button" class="remove-upstream text-red-600 hover:text-red-800 text-xs">- 删除此规则</button>
         </div>
     `;
 
-    document.body.appendChild(notification);
-
-    // 显示动画
-    setTimeout(() => {
-        notification.classList.remove('translate-x-full');
-    }, 100);
-
-    // 自动隐藏
-    setTimeout(() => {
-        notification.classList.add('translate-x-full');
-        setTimeout(() => {
-            notification.remove();
-        }, 300);
-    }, 5000);
+    container.appendChild(newConfig);
+    bindUpstreamEvents();
 }
 
+// 绑定分流配置事件
+function bindUpstreamEvents() {
+    // 添加头部按钮事件
+    document.querySelectorAll('.add-header-btn').forEach(btn => {
+        btn.onclick = function () {
+            const headersContainer = this.closest('.upstream-headers');
+            const newHeaderPair = document.createElement('div');
+            newHeaderPair.className = 'header-pair flex gap-2';
+            newHeaderPair.innerHTML = `
+                <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称">
+                <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值">
+                <button type="button" class="remove-header-btn text-red-600 hover:text-red-800 px-2">-</button>
+            `;
+            headersContainer.appendChild(newHeaderPair);
+            bindUpstreamEvents();
+        };
+    });
 
-// 编辑规则
-window.editRule = async function (ruleId) {
-    try {
-        const response = await apiCall(`/rules/${ruleId}`);
+    // 删除头部按钮事件
+    document.querySelectorAll('.remove-header-btn').forEach(btn => {
+        btn.onclick = function () {
+            this.closest('.header-pair').remove();
+        };
+    });
 
-        // 填充编辑表单
-        await populateEditForm(response);
+    // 删除分流规则按钮事件
+    document.querySelectorAll('.remove-upstream').forEach(btn => {
+        btn.onclick = function () {
+            this.closest('.upstream-config').remove();
+        };
+    });
+}
 
-        // 显示编辑模态框
-        showEditProxyModal();
+// 加载证书数据（返回Promise）
+function loadCertificatesData() {
+    return fetch('/api/certificates')
+        .then(response => response.json())
+        .then(data => {
+            const allCertificates = data.certificates || [];
+            currentCertificates = allCertificates;
+            return allCertificates;
+        })
+        .catch(error => {
+            console.error('Error loading certificates:', error);
+            currentCertificates = [];
+            return [];
+        });
+}
 
-    } catch (error) {
-        console.error('Failed to load rule for editing:', error);
-        showNotification('加载规则失败', 'error');
+// 加载证书选项
+function loadCertificatesForSelect() {
+    const select = document.getElementById('proxy-certificate');
+    if (!select) {
+        console.error('Certificate select element not found');
+        return;
+    }
+
+    // 清空现有选项
+    select.innerHTML = '<option value="">选择证书...</option>';
+
+    console.log('Loading certificates for select, currentCertificates:', currentCertificates);
+
+    // 使用已加载的证书列表
+    if (currentCertificates && currentCertificates.length > 0) {
+        let validCertCount = 0;
+        currentCertificates.forEach(cert => {
+            console.log('Processing certificate:', cert);
+            // 只显示有效的证书（有证书文件路径的）
+            if (cert.cert_path && cert.key_path && cert.cert_path !== '') {
+                const option = document.createElement('option');
+                option.value = cert.source === 'upload' ? cert.id : cert.source_id;
+                option.textContent = `${cert.name || cert.domain} (${cert.domain})`;
+                select.appendChild(option);
+                validCertCount++;
+                console.log('Added certificate option:', option.textContent);
+            } else {
+                console.log('Skipping certificate (no cert_path):', cert.name || cert.domain);
+            }
+        });
+
+        if (validCertCount === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = '暂无可用证书';
+            option.disabled = true;
+            select.appendChild(option);
+        }
+
+        console.log(`Loaded ${validCertCount} valid certificates`);
+    } else {
+        console.log('No certificates available');
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = '暂无证书，请先上传或申请证书';
+        option.disabled = true;
+        select.appendChild(option);
     }
 }
 
-// 显示编辑代理模态框
-function showEditProxyModal() {
-    const modal = document.getElementById('edit-proxy-modal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
+// 删除代理
+window.deleteProxy = function (ruleId) {
+    if (!confirm('确定要删除此代理配置吗？')) {
+        return;
+    }
 
-    // 加载证书列表到选择框
-    loadCertificatesForEditSelect();
-}
+    fetch(`/api/rules/${ruleId}`, {
+        method: 'DELETE'
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('删除代理失败: ' + data.error);
+            } else {
+                Toast.success('代理删除成功');
+                loadProxies();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('删除代理失败');
+        });
+};
 
-// 关闭编辑代理模态框
-function closeEditProxyModal() {
-    const modal = document.getElementById('edit-proxy-modal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
+// 编辑代理
+window.editProxy = function (ruleId) {
+    // 使用单个代理配置获取接口
+    fetch(`/api/rules/${ruleId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                Toast.error('获取代理配置失败: ' + data.error);
+                return;
+            }
 
-    // 清空表单
-    document.getElementById('edit-proxy-form').reset();
-    document.getElementById('edit-upstream-configs').innerHTML = '';
+            // 检查返回数据的结构
+            const rule = data.rule || data;
 
-    // 重置SSL配置
-    const sslCheckbox = document.getElementById('edit-proxy-ssl');
-    const sslConfig = document.getElementById('edit-ssl-config');
-    sslCheckbox.checked = false;
-    sslConfig.classList.add('hidden');
-}
+            if (!rule || !rule.id) {
+                Toast.error('返回的代理配置数据格式不正确');
+                return;
+            }
+
+            populateEditForm(rule);
+
+            // 显示编辑模态框
+            document.getElementById('edit-proxy-modal').classList.remove('hidden');
+            document.getElementById('edit-proxy-modal').classList.add('flex');
+        })
+        .catch(error => {
+            console.error('Error fetching rule:', error);
+            Toast.error('获取代理配置失败: ' + error.message);
+        });
+};
 
 // 填充编辑表单
-async function populateEditForm(rule) {
-    // 填充基本信息
-    document.getElementById('edit-proxy-id').value = rule.id;
-    document.getElementById('edit-proxy-domain').value = rule.server_name;
+function populateEditForm(rule) {
+    try {
+        // 填充基本信息
+        document.getElementById('edit-proxy-id').value = rule.id || '';
+        document.getElementById('edit-proxy-domain').value = rule.server_name || '';
 
-    // 填充路径（取第一个location的路径）
-    const firstLocation = rule.locations && rule.locations[0];
-    if (firstLocation) {
-        document.getElementById('edit-proxy-path').value = firstLocation.path || '/';
-    }
+        // 填充路径（从第一个location获取）
+        const firstLocation = rule.locations && rule.locations.length > 0 ? rule.locations[0] : null;
+        document.getElementById('edit-proxy-path').value = firstLocation ? (firstLocation.path || '/') : '/';
 
-    // 填充SSL配置
-    const sslCheckbox = document.getElementById('edit-proxy-ssl');
-    const sslConfig = document.getElementById('edit-ssl-config');
+        // 填充SSL配置
+        const hasSSL = rule.ssl_cert && rule.ssl_key;
+        document.getElementById('edit-proxy-ssl').checked = hasSSL;
 
-    if (rule.ssl_cert) {
-        sslCheckbox.checked = true;
-        sslConfig.classList.remove('hidden');
+        if (hasSSL) {
+            document.getElementById('edit-ssl-config').classList.remove('hidden');
+            // 检查是否同时监听80端口（HTTP重定向）
+            const hasHttpPort = rule.listen_ports && rule.listen_ports.includes(80);
+            document.getElementById('edit-proxy-http-redirect').checked = hasHttpPort;
 
-        // 根据证书路径找到对应的证书ID
-        try {
-            const certResponse = await apiCall('/certificates');
-            const certificates = certResponse.certificates || [];
-            const matchingCert = certificates.find(cert =>
-                cert.cert_path === rule.ssl_cert || cert.key_path === rule.ssl_key
-            );
-
-            if (matchingCert) {
-                // 延迟设置选中的证书，等待证书列表加载完成
-                setTimeout(() => {
-                    const certSelect = document.getElementById('edit-proxy-certificate');
-                    if (certSelect) {
-                        certSelect.value = matchingCert.id;
-                    }
-                }, 100);
-            }
-        } catch (error) {
-            console.error('Failed to load certificates for edit form:', error);
+            // 加载证书选项并选中当前证书
+            loadCertificatesData().then(() => {
+                loadCertificatesForEditSelect();
+                // 尝试匹配当前使用的证书
+                const currentCert = currentCertificates.find(cert =>
+                    cert.cert_path === rule.ssl_cert && cert.key_path === rule.ssl_key
+                );
+                if (currentCert) {
+                    const certId = currentCert.source === 'upload' ? currentCert.id : currentCert.source_id;
+                    document.getElementById('edit-proxy-certificate').value = certId;
+                }
+            });
+        } else {
+            document.getElementById('edit-ssl-config').classList.add('hidden');
         }
-    } else {
-        sslCheckbox.checked = false;
-        sslConfig.classList.add('hidden');
-    }
 
-    // 填充分流配置
-    const upstreamContainer = document.getElementById('edit-upstream-configs');
-    upstreamContainer.innerHTML = '';
+        // 填充分流配置
+        populateEditUpstreamConfigs(firstLocation ? firstLocation.upstreams : []);
 
-    if (firstLocation && firstLocation.upstreams) {
-        firstLocation.upstreams.forEach(upstream => {
-            addEditUpstreamConfig(upstream.condition_ip, upstream.target, upstream.headers || {});
-        });
-    } else {
-        // 如果没有分流配置，添加一个默认的
-        addEditUpstreamConfig('0.0.0.0/0', '', {});
+    } catch (error) {
+        console.error('Error populating edit form:', error);
+        Toast.error('填充编辑表单失败: ' + error.message);
     }
 }
 
-// 添加编辑分流配置
-function addEditUpstreamConfig(condition = '', target = '', headers = {}) {
+// 填充编辑模式的分流配置
+function populateEditUpstreamConfigs(upstreams) {
+    const container = document.getElementById('edit-upstream-configs');
+    container.innerHTML = '';
+
+    if (!upstreams || upstreams.length === 0) {
+        // 如果没有分流配置，添加一个默认的
+        upstreams = [{
+            target: '',
+            condition_ip: '0.0.0.0/0',
+            headers: {}
+        }];
+    }
+
+    upstreams.forEach((upstream, index) => {
+        const upstreamDiv = document.createElement('div');
+        upstreamDiv.className = 'upstream-config border border-gray-200 rounded-md p-3';
+
+        // 构建头部配置HTML
+        let headersHtml = '';
+        const headers = upstream.headers || {};
+        const headerKeys = Object.keys(headers);
+
+        if (headerKeys.length === 0) {
+            // 如果没有头部配置，添加一个空的输入框
+            headersHtml = `
+                <div class="header-pair flex gap-2">
+                    <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
+                    <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
+                    <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
+                </div>
+            `;
+        } else {
+            headerKeys.forEach((key, headerIndex) => {
+                const isFirst = headerIndex === 0;
+                headersHtml += `
+                    <div class="header-pair flex gap-2">
+                        <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称" value="${key}">
+                        <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值" value="${headers[key]}">
+                        <button type="button" class="${isFirst ? 'add-header-btn text-green-600 hover:text-green-800' : 'remove-header-btn text-red-600 hover:text-red-800'} px-2">${isFirst ? '+' : '-'}</button>
+                    </div>
+                `;
+            });
+        }
+
+        upstreamDiv.innerHTML = `
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
+                    <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="${upstream.condition_ip || '0.0.0.0/0'}">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">目标地址</label>
+                    <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000" value="${upstream.target || ''}">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">HTTP头部路由 (可选)</label>
+                <div class="upstream-headers space-y-1">
+                    ${headersHtml}
+                </div>
+            </div>
+            ${index > 0 ? '<div class="mt-2"><button type="button" class="remove-upstream text-red-600 hover:text-red-800 text-xs">- 删除此规则</button></div>' : ''}
+        `;
+
+        container.appendChild(upstreamDiv);
+    });
+
+    // 绑定编辑模式的事件
+    bindEditUpstreamEvents();
+}
+
+// 加载证书选项到编辑表单
+function loadCertificatesForEditSelect() {
+    const select = document.getElementById('edit-proxy-certificate');
+    if (!select) {
+        console.error('Edit certificate select element not found');
+        return;
+    }
+
+    // 清空现有选项
+    select.innerHTML = '<option value="">选择证书...</option>';
+
+    // 使用已加载的证书列表
+    if (currentCertificates && currentCertificates.length > 0) {
+        let validCertCount = 0;
+        currentCertificates.forEach(cert => {
+            // 只显示有效的证书（有证书文件路径的）
+            if (cert.cert_path && cert.key_path && cert.cert_path !== '') {
+                const option = document.createElement('option');
+                option.value = cert.source === 'upload' ? cert.id : cert.source_id;
+                option.textContent = `${cert.name || cert.domain} (${cert.domain})`;
+                select.appendChild(option);
+                validCertCount++;
+            }
+        });
+
+        if (validCertCount === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = '暂无可用证书';
+            option.disabled = true;
+            select.appendChild(option);
+        }
+    } else {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = '暂无证书，请先上传或申请证书';
+        option.disabled = true;
+        select.appendChild(option);
+    }
+}
+
+// 添加编辑模式的分流配置
+function addEditUpstreamConfig() {
     const container = document.getElementById('edit-upstream-configs');
     const newConfig = document.createElement('div');
     newConfig.className = 'upstream-config border border-gray-200 rounded-md p-3';
-
-    // 生成头部HTML
-    let headersHtml = '';
-    if (Object.keys(headers).length > 0) {
-        headersHtml = Object.entries(headers).map(([key, value]) => `
-            <div class="header-pair flex gap-2">
-                <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称" value="${key}">
-                <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值" value="${value}">
-                <button type="button" class="remove-header-btn text-red-600 hover:text-red-800 px-2">-</button>
-            </div>
-        `).join('');
-    }
-
-    // 如果没有现有的headers，添加一个空的header输入行
-    if (Object.keys(headers).length === 0) {
-        headersHtml = `
-            <div class="header-pair flex gap-2">
-                <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
-                <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
-                <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
-            </div>
-        `;
-    } else {
-        // 如果有现有的headers，在最后一个header后添加一个"+"按钮
-        headersHtml += `
-            <div class="header-pair flex gap-2">
-                <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
-                <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
-                <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
-            </div>
-        `;
-    }
-
     newConfig.innerHTML = `
         <div class="grid grid-cols-2 gap-2 mb-2">
             <div>
                 <label class="block text-xs text-gray-600 mb-1">来源IP (CIDR)</label>
-                <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="${condition}">
+                <input type="text" class="upstream-condition w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="0.0.0.0/0" value="0.0.0.0/0">
             </div>
             <div>
                 <label class="block text-xs text-gray-600 mb-1">目标地址</label>
-                <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000" value="${target}">
+                <input type="text" class="upstream-target w-full border border-gray-300 rounded px-2 py-1 text-sm" placeholder="http://localhost:3000">
             </div>
         </div>
         <div>
             <label class="block text-xs text-gray-600 mb-1">HTTP头部路由 (可选)</label>
             <div class="upstream-headers space-y-1">
-                ${headersHtml}
+                <div class="header-pair flex gap-2">
+                    <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称 (如: X-API-Version)">
+                    <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值 (如: v1)">
+                    <button type="button" class="add-header-btn text-green-600 hover:text-green-800 px-2">+</button>
+                </div>
             </div>
         </div>
-        <button type="button" class="remove-upstream mt-2 text-xs text-red-600 hover:text-red-800">移除</button>
+        <div class="mt-2">
+            <button type="button" class="remove-upstream text-red-600 hover:text-red-800 text-xs">- 删除此规则</button>
+        </div>
     `;
 
-    // 添加移除按钮事件
-    newConfig.querySelector('.remove-upstream').addEventListener('click', function () {
-        newConfig.remove();
-    });
-
-    // 添加头部相关事件
-    const addHeaderBtn = newConfig.querySelector('.add-header-btn');
-    if (addHeaderBtn) {
-        addHeaderBtn.addEventListener('click', function () {
-            addHeaderPair(this.closest('.upstream-headers'));
-        });
-    }
-
-    newConfig.querySelectorAll('.remove-header-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            btn.closest('.header-pair').remove();
-        });
-    });
-
     container.appendChild(newConfig);
+    bindEditUpstreamEvents();
 }
 
-// 加载证书到编辑选择框
-async function loadCertificatesForEditSelect() {
-    const certificateSelect = document.getElementById('edit-proxy-certificate');
-    if (!certificateSelect) return;
+// 绑定编辑模式分流配置事件
+function bindEditUpstreamEvents() {
+    // 添加头部按钮事件
+    document.querySelectorAll('#edit-upstream-configs .add-header-btn').forEach(btn => {
+        btn.onclick = function () {
+            const headersContainer = this.closest('.upstream-headers');
+            const newHeaderPair = document.createElement('div');
+            newHeaderPair.className = 'header-pair flex gap-2';
+            newHeaderPair.innerHTML = `
+                <input type="text" class="header-key w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header名称">
+                <input type="text" class="header-value w-1/2 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="Header值">
+                <button type="button" class="remove-header-btn text-red-600 hover:text-red-800 px-2">-</button>
+            `;
+            headersContainer.appendChild(newHeaderPair);
+            bindEditUpstreamEvents();
+        };
+    });
 
-    try {
-        const response = await apiCall('/certificates');
-        const certificates = response.certificates || [];
+    // 删除头部按钮事件
+    document.querySelectorAll('#edit-upstream-configs .remove-header-btn').forEach(btn => {
+        btn.onclick = function () {
+            this.closest('.header-pair').remove();
+        };
+    });
 
-        certificateSelect.innerHTML = '<option value="">选择证书...</option>' +
-            certificates.map(cert => `
-                <option value="${cert.id}">${cert.name} (${cert.domain || 'N/A'})</option>
-            `).join('');
-
-    } catch (error) {
-        console.error('Failed to load certificates for edit select:', error);
-        certificateSelect.innerHTML = '<option value="">加载失败</option>';
-    }
+    // 删除分流规则按钮事件
+    document.querySelectorAll('#edit-upstream-configs .remove-upstream').forEach(btn => {
+        btn.onclick = function () {
+            this.closest('.upstream-config').remove();
+        };
+    });
 }
 
-// 处理编辑代理提交
-async function handleEditProxy(e) {
-    e.preventDefault();
-
+// 更新代理配置
+function updateProxy() {
     const ruleId = document.getElementById('edit-proxy-id').value;
-    const domain = document.getElementById('edit-proxy-domain').value;
-    const path = document.getElementById('edit-proxy-path').value || '/';
-    const ssl = document.getElementById('edit-proxy-ssl').checked;
+    const domain = document.getElementById('edit-proxy-domain').value.trim();
+    const path = document.getElementById('edit-proxy-path').value.trim() || '/';
+    const sslEnabled = document.getElementById('edit-proxy-ssl').checked;
+    const httpRedirect = document.getElementById('edit-proxy-http-redirect').checked;
     const certificateId = document.getElementById('edit-proxy-certificate').value;
 
-    // 收集所有分流配置
+    if (!domain) {
+        Toast.warning('请输入域名');
+        return;
+    }
+
+    // 收集分流配置
     const upstreamConfigs = [];
     const upstreamElements = document.querySelectorAll('#edit-upstream-configs .upstream-config');
 
@@ -722,264 +1343,449 @@ async function handleEditProxy(e) {
         const condition = element.querySelector('.upstream-condition').value.trim();
         const target = element.querySelector('.upstream-target').value.trim();
 
-        if (condition && target) {
-            const upstream = {
-                condition_ip: condition,
-                target: target
-            };
-
-            // 收集头部信息
-            const headers = {};
-            const headerPairs = element.querySelectorAll('.header-pair');
-            headerPairs.forEach(pair => {
-                const key = pair.querySelector('.header-key').value.trim();
-                const value = pair.querySelector('.header-value').value.trim();
-                if (key && value) {
-                    headers[key] = value;
-                }
-            });
-
-            if (Object.keys(headers).length > 0) {
-                upstream.headers = headers;
-            }
-
-            upstreamConfigs.push(upstream);
+        if (!target) {
+            Toast.warning('请填写目标地址');
+            return;
         }
+
+        // 收集头部条件
+        const headers = {};
+        const headerPairs = element.querySelectorAll('.header-pair');
+        headerPairs.forEach(pair => {
+            const key = pair.querySelector('.header-key').value.trim();
+            const value = pair.querySelector('.header-value').value.trim();
+            if (key && value) {
+                headers[key] = value;
+            }
+        });
+
+        upstreamConfigs.push({
+            target: target,
+            condition_ip: condition || '0.0.0.0/0',
+            headers: headers
+        });
     });
 
     if (upstreamConfigs.length === 0) {
-        showNotification('请至少配置一个分流规则', 'warning');
+        Toast.warning('请至少配置一个分流规则');
         return;
     }
 
-    let sslCert = '';
-    let sslKey = '';
+    // 构建请求数据
+    let listenPorts = [80]; // 默认启用HTTP 80
 
-    if (ssl && certificateId) {
-        // 获取选中的证书信息
-        try {
-            const certResponse = await apiCall(`/certificates/${certificateId}`);
-            sslCert = certResponse.cert_path;
-            sslKey = certResponse.key_path;
-        } catch (error) {
-            showNotification('获取证书信息失败', 'error');
-            return;
+    if (sslEnabled) {
+        listenPorts.push(443); // 启用HTTPS 443
+        if (!httpRedirect) {
+            // 如果不启用HTTP重定向，则只使用HTTPS端口
+            listenPorts = [443];
         }
     }
 
-    const ruleData = {
+    const requestData = {
         server_name: domain,
-        listen_ports: ssl ? [443] : [80],
-        ssl_cert: sslCert,
-        ssl_key: sslKey,
+        listen_ports: listenPorts,
         locations: [{
             path: path,
             upstreams: upstreamConfigs
         }]
     };
 
-    try {
-        await apiCall(`/rules/${ruleId}`, 'PUT', ruleData);
-        showNotification('代理配置已更新', 'success');
-        closeEditProxyModal();
+    // 如果启用SSL且选择了证书，添加证书配置
+    if (sslEnabled && certificateId) {
+        // 从当前证书列表中找到对应的证书
+        const selectedCert = currentCertificates.find(cert =>
+            (cert.source === 'upload' ? cert.id : cert.source_id) === certificateId
+        );
 
-        // 重新加载代理列表
-        if (currentPage === 'proxies') {
-            loadProxiesData();
+        if (selectedCert) {
+            requestData.ssl_cert = selectedCert.cert_path;
+            requestData.ssl_key = selectedCert.key_path;
         }
-
-    } catch (error) {
-        console.error('Failed to update proxy:', error);
-        showNotification('更新代理失败: ' + error.message, 'error');
     }
+
+    const submitBtn = document.querySelector('#edit-proxy-form button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+    submitBtn.disabled = true;
+
+    fetch(`/api/rules/${ruleId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('更新代理失败: ' + data.error);
+            } else {
+                Toast.success('代理更新成功');
+                // 关闭模态框
+                document.getElementById('edit-proxy-modal').classList.add('hidden');
+                document.getElementById('edit-proxy-modal').classList.remove('flex');
+                // 重新加载代理列表
+                loadProxies();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('更新代理失败');
+        })
+        .finally(() => {
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        });
 }
 
-// 删除规则
-window.deleteRule = async function (ruleId) {
-    if (!confirm('确定要删除这个代理规则吗？')) {
+// 初始化时绑定分流配置事件
+document.addEventListener('DOMContentLoaded', function () {
+    setTimeout(() => {
+        bindUpstreamEvents();
+    }, 100);
+});
+
+// 删除上传的证书
+window.deleteUploadedCertificate = function (certificateId) {
+    if (!confirm('确定要删除此证书吗？')) {
         return;
     }
 
-    try {
-        await apiCall(`/rules/${ruleId}`, 'DELETE');
-        showNotification('代理规则已删除', 'success');
+    fetch(`/api/certificates/${certificateId}`, {
+        method: 'DELETE'
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('删除证书失败: ' + data.error);
+            } else {
+                Toast.success('证书删除成功');
+                loadTencentCertificates();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('删除证书失败');
+        });
+};
 
-        // 重新加载代理列表
-        if (currentPage === 'proxies') {
-            loadProxiesData();
+// 续期腾讯云证书
+window.renewTencentCertificate = function (certificateId) {
+    // 找到对应的证书信息
+    const cert = currentCertificates.find(c =>
+        c.source === 'tencent_cloud' && c.source_id === certificateId
+    );
+    const certName = cert ? (cert.name || cert.domain) : certificateId;
+
+    if (!confirm(`确定要续期证书 "${certName}" 吗？\n\n续期过程可能需要一些时间，系统会自动申请新证书并在完成后替换当前证书。`)) {
+        return;
+    }
+
+    // 获取按钮元素并添加加载状态
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 续期中...';
+    button.disabled = true;
+
+    fetch(`/api/certificates/tencent/${certificateId}/renew`, {
+        method: 'POST'
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('续期证书失败: ' + data.error);
+            } else {
+                Toast.success(`证书 "${certName}" 续期已开始！\n新证书ID: ${data.new_cert_id}\n\n请定期检查状态，续期完成后会自动切换。`, 6000);
+                loadTencentCertificates(); // 重新加载证书列表
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('续期证书失败: ' + error.message);
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            button.innerHTML = originalText;
+            button.disabled = false;
+        });
+};
+
+// 编辑证书名称
+window.editCertificateName = function (certificateId, currentName, source = 'tencent_cloud') {
+    const newName = prompt('请输入新的证书名称:', currentName);
+    if (newName && newName !== currentName) {
+        // 根据证书来源选择不同的API端点
+        const apiUrl = source === 'upload'
+            ? `/api/certificates/${certificateId}/name`
+            : `/api/certificates/tencent/${certificateId}/name`;
+
+        fetch(apiUrl, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({name: newName})
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    Toast.error('更新证书名称失败: ' + data.error);
+                } else {
+                    Toast.success('证书名称更新成功');
+                    loadTencentCertificates(); // 重新加载证书列表
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Toast.error('更新证书名称失败');
+            });
+    }
+};
+
+// 检查腾讯云证书状态
+window.checkTencentCertificateStatus = function (certificateId) {
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 检查中...';
+    button.disabled = true;
+
+    fetch(`/api/certificates/tencent/${certificateId}/status`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('检查证书状态失败: ' + data.error);
+            } else {
+                let message = `证书状态: ${data.status}\n`;
+                if (data.domain) {
+                    message += `域名: ${data.domain}\n`;
+                }
+                if (data.expires_at) {
+                    message += `过期时间: ${new Date(data.expires_at).toLocaleString()}\n`;
+                }
+                if (data.message) {
+                    message += `备注: ${data.message}`;
+                }
+                Toast.info(message);
+
+                // 重新加载证书列表以更新状态
+                loadTencentCertificates();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('检查证书状态失败');
+        })
+        .finally(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        });
+};
+
+// 下载腾讯云证书
+window.downloadTencentCertificate = function (certificateId) {
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 下载中...';
+    button.disabled = true;
+
+    fetch(`/api/certificates/tencent/${certificateId}/download`, {
+        method: 'POST'
+    })
+        .then(response => {
+            if (response.ok) {
+                // 如果返回的是文件流，直接下载
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/zip')) {
+                    return response.blob().then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `certificate-${certificateId}.zip`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        Toast.success('证书下载成功');
+                        return {success: true};
+                    });
+                } else {
+                    return response.json();
+                }
+            } else {
+                return response.json();
+            }
+        })
+        .then(data => {
+            if (data && data.error) {
+                Toast.error('下载证书失败: ' + data.error);
+            } else if (data && !data.success) {
+                Toast.success('证书下载成功');
+                loadTencentCertificates();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('下载证书失败');
+        })
+        .finally(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        });
+};
+
+// 删除腾讯云证书
+window.deleteTencentCertificate = function (certificateId) {
+    if (!confirm('确定要删除此证书吗？此操作不可恢复。')) {
+        return;
+    }
+
+    fetch(`/api/certificates/tencent/${certificateId}`, {
+        method: 'DELETE'
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('删除证书失败: ' + data.error);
+            } else {
+                Toast.success('证书删除成功');
+                loadTencentCertificates();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('删除证书失败');
+        });
+};
+
+// 批量续期腾讯云证书
+function batchRenewTencentCertificates() {
+    if (!currentCertificates || currentCertificates.length === 0) {
+        Toast.warning('没有可续期的证书');
+        return;
+    }
+
+    // 筛选出需要续期的腾讯云证书（即将过期或已过期的）
+    const renewableCerts = currentCertificates.filter(cert => {
+        if (cert.source !== 'tencent_cloud') return false;
+
+        const status = getCertificateStatus(cert);
+        return status === 'expired' || status === 'expiring';
+    });
+
+    if (renewableCerts.length === 0) {
+        Toast.info('没有需要续期的腾讯云证书');
+        return;
+    }
+
+    const certNames = renewableCerts.map(cert => cert.name || cert.domain).join('、');
+    if (!confirm(`确定要批量续期以下 ${renewableCerts.length} 个证书吗？\n\n${certNames}\n\n续期过程可能需要一些时间。`)) {
+        return;
+    }
+
+    const button = document.getElementById('batch-renew-tencent-certificates-btn');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 批量续期中...';
+    button.disabled = true;
+
+    let successCount = 0;
+    let failCount = 0;
+    let completedCount = 0;
+
+    // 并发续期所有证书
+    const renewPromises = renewableCerts.map(cert => {
+        return fetch(`/api/certificates/tencent/${cert.source_id}/renew`, {
+            method: 'POST'
+        })
+            .then(response => response.json())
+            .then(data => {
+                completedCount++;
+                if (data.error) {
+                    failCount++;
+                    console.error(`续期证书 ${cert.name || cert.domain} 失败:`, data.error);
+                } else {
+                    successCount++;
+                    console.log(`续期证书 ${cert.name || cert.domain} 成功，新证书ID: ${data.new_cert_id}`);
+                }
+            })
+            .catch(error => {
+                completedCount++;
+                failCount++;
+                console.error(`续期证书 ${cert.name || cert.domain} 失败:`, error);
+            });
+    });
+
+    Promise.all(renewPromises).finally(() => {
+        button.innerHTML = originalText;
+        button.disabled = false;
+
+        if (successCount > 0 && failCount === 0) {
+            Toast.success(`批量续期完成！成功续期 ${successCount} 个证书。`);
+        } else if (successCount > 0 && failCount > 0) {
+            Toast.warning(`批量续期完成！成功 ${successCount} 个，失败 ${failCount} 个。`);
+        } else {
+            Toast.error(`批量续期失败！所有 ${failCount} 个证书续期都失败了。`);
         }
 
-    } catch (error) {
-        console.error('Failed to delete rule:', error);
-        showNotification('删除规则失败: ' + error.message, 'error');
-    }
+        // 重新加载证书列表
+        loadTencentCertificates();
+    });
 }
 
-// 加载证书数据
-async function loadCertificatesData() {
-    const certificatesTable = document.getElementById('certificates-table');
-    if (!certificatesTable) return;
+// 上传证书
+function uploadCertificate() {
+    console.log('uploadCertificate function called'); // 调试日志
 
-    try {
-        const response = await apiCall('/certificates');
-        const certificates = response.certificates || [];
-
-        certificatesTable.innerHTML = certificates.map(cert => {
-            const expiresAt = new Date(cert.expires_at);
-            const now = new Date();
-            const daysUntilExpiry = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
-
-            let statusClass = 'bg-green-100 text-green-800';
-            let statusText = '有效';
-
-            if (daysUntilExpiry < 0) {
-                statusClass = 'bg-red-100 text-red-800';
-                statusText = '已过期';
-            } else if (daysUntilExpiry < 30) {
-                statusClass = 'bg-yellow-100 text-yellow-800';
-                statusText = '即将过期';
-            }
-
-            return `
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${cert.name}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${cert.domain || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${expiresAt.toLocaleDateString()}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">
-                            ${statusText}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button onclick="deleteCertificate('${cert.id}')" class="text-red-600 hover:text-red-900">删除</button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-    } catch (error) {
-        console.error('Failed to load certificates data:', error);
-        certificatesTable.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-500">加载失败</td></tr>';
-    }
-}
-
-// 加载证书到选择框
-async function loadCertificatesForSelect() {
-    const certificateSelect = document.getElementById('proxy-certificate');
-    if (!certificateSelect) return;
-
-    try {
-        const response = await apiCall('/certificates');
-        const certificates = response.certificates || [];
-
-        certificateSelect.innerHTML = '<option value="">选择证书...</option>' +
-            certificates.map(cert => `
-                <option value="${cert.id}">${cert.name} (${cert.domain || 'N/A'})</option>
-            `).join('');
-
-    } catch (error) {
-        console.error('Failed to load certificates for select:', error);
-        certificateSelect.innerHTML = '<option value="">加载失败</option>';
-    }
-}
-
-// 关闭证书上传模态框
-function closeAddCertificateModal() {
-    const modal = document.getElementById('add-certificate-modal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-
-    // 清空表单
-    document.getElementById('add-certificate-form').reset();
-}
-
-// 处理证书上传
-async function handleAddCertificate(e) {
-    e.preventDefault();
-
-    const name = document.getElementById('certificate-name').value;
+    const name = document.getElementById('certificate-name').value.trim();
     const certFile = document.getElementById('certificate-cert').files[0];
     const keyFile = document.getElementById('certificate-key').files[0];
 
-    if (!name || !certFile || !keyFile) {
-        showNotification('请填写所有必需字段', 'warning');
+    console.log('Form data:', {name, certFile, keyFile}); // 调试日志
+
+    if (!certFile || !keyFile) {
+        Toast.warning('请选择证书文件和私钥文件');
         return;
     }
 
     const formData = new FormData();
     formData.append('cert', certFile);
     formData.append('key', keyFile);
-
-    try {
-        const response = await fetch('/api/certificates', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result = await response.json();
-        showNotification('证书上传成功', 'success');
-        closeAddCertificateModal();
-
-        // 重新加载证书列表
-        if (currentPage === 'certificates') {
-            loadCertificatesData();
-        }
-
-    } catch (error) {
-        console.error('Failed to upload certificate:', error);
-        showNotification('证书上传失败: ' + error.message, 'error');
-    }
-}
-
-// 删除证书
-window.deleteCertificate = async function (certificateId) {
-    if (!confirm('确定要删除这个证书吗？')) {
-        return;
+    if (name) {
+        formData.append('name', name);
     }
 
-    try {
-        await apiCall(`/certificates/${certificateId}`, 'DELETE');
-        showNotification('证书已删除', 'success');
+    const submitBtn = document.querySelector('#add-certificate-form button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上传中...';
+    submitBtn.disabled = true;
 
-        // 重新加载证书列表
-        if (currentPage === 'certificates') {
-            loadCertificatesData();
-        }
-
-    } catch (error) {
-        console.error('Failed to delete certificate:', error);
-        showNotification('删除证书失败: ' + error.message, 'error');
-    }
-}
-
-// API调用函数
-async function apiCall(endpoint, method = 'GET', data = null) {
-    try {
-        const options = {
-            method,
-            headers: {
-                'Content-Type': 'application/json',
+    fetch('/api/certificates', {
+        method: 'POST',
+        body: formData
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Toast.error('上传证书失败: ' + data.error);
+            } else {
+                Toast.success('证书上传成功');
+                // 关闭模态框
+                document.getElementById('add-certificate-modal').classList.add('hidden');
+                document.getElementById('add-certificate-modal').classList.remove('flex');
+                // 清空表单
+                document.getElementById('certificate-name').value = '';
+                document.getElementById('certificate-cert').value = '';
+                document.getElementById('certificate-key').value = '';
+                // 重新加载证书列表
+                loadTencentCertificates();
             }
-        };
-
-        if (data) {
-            options.body = JSON.stringify(data);
-        }
-
-        const response = await fetch(`/api${endpoint}`, options);
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        return await response.json();
-    } catch (error) {
-        console.error('API call failed:', error);
-        showNotification('API调用失败', 'error');
-        throw error;
-    }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Toast.error('上传证书失败: ' + error.message);
+        })
+        .finally(() => {
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        });
 }

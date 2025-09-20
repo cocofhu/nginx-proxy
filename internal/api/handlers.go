@@ -27,18 +27,19 @@ type Handler struct {
 	nginxManager *core.NginxManager
 	certDir      string
 	cache        *cache.Cache
+	tencentSSL   *core.TencentSSLService
 }
 
 // NewHandler 创建新的 API 处理器
-func NewHandler(database *gorm.DB, generator *core.Generator, nginxManager *core.NginxManager, certDir string) *Handler {
+func NewHandler(database *gorm.DB, generator *core.Generator, nginxManager *core.NginxManager, certDir string, tencentSSL *core.TencentSSLService) *Handler {
 	h := &Handler{
 		db:           database,
 		generator:    generator,
 		nginxManager: nginxManager,
 		certDir:      certDir,
 		cache:        cache.New(5*time.Minute, 10*time.Minute), // 5分钟过期，10分钟清理
+		tencentSSL:   tencentSSL,
 	}
-
 	return h
 }
 
@@ -57,7 +58,6 @@ func (h *Handler) validateSSLConfig(req *CreateRuleRequest) error {
 	if (req.SSLCert != "" && req.SSLKey == "") || (req.SSLCert == "" && req.SSLKey != "") {
 		return fmt.Errorf("ssl_cert and ssl_key must be provided together or both omitted")
 	}
-
 	// 如果提供了证书配置，检查文件是否存在
 	if req.SSLCert != "" && req.SSLKey != "" {
 		if _, err := os.Stat(req.SSLCert); os.IsNotExist(err) {
@@ -67,7 +67,6 @@ func (h *Handler) validateSSLConfig(req *CreateRuleRequest) error {
 			return fmt.Errorf("ssl key file does not exist: %s", req.SSLKey)
 		}
 	}
-
 	return nil
 }
 
@@ -113,20 +112,16 @@ func (h *Handler) Route(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
-
 	// 验证请求数据
 	if req.Path == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Path is required"})
 		return
 	}
-
 	log.Printf("Route request: path=%s, remote_addr=%s, server_name=%s, headers=%v",
 		req.Path, req.RemoteAddr, req.ServerName, req.Headers)
-
 	// 从缓存或数据库查询匹配的规则
 	var rule db.Rule
 	cacheKey := fmt.Sprintf("rule:%s", req.ServerName)
-
 	// 先尝试从缓存获取
 	if cached, found := h.cache.Get(cacheKey); found {
 		rule = cached.(db.Rule)
@@ -139,12 +134,10 @@ func (h *Handler) Route(c *gin.Context) {
 			c.JSON(http.StatusOK, RouteResponse{Target: "", Match: false})
 			return
 		}
-
 		// 存入缓存
 		h.cache.Set(cacheKey, rule, cache.DefaultExpiration)
 		log.Printf("Cache miss, loaded from DB for server_name: %s", req.ServerName)
 	}
-
 	// 解析 locations 配置
 	locations, err := rule.GetLocations()
 	if err != nil {
@@ -152,7 +145,6 @@ func (h *Handler) Route(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Configuration error"})
 		return
 	}
-
 	// 查找匹配的 location 和 upstream
 	for _, location := range locations {
 		if h.matchPath(req.Path, location.Path) {
@@ -169,7 +161,6 @@ func (h *Handler) Route(c *gin.Context) {
 			}
 		}
 	}
-
 	// 如果没有匹配，返回空（使用默认）
 	log.Printf("No route matched for path=%s, server_name=%s", req.Path, req.ServerName)
 	c.JSON(http.StatusOK, RouteResponse{Target: "", Match: false})
@@ -191,13 +182,11 @@ func (h *Handler) matchUpstream(req RouteRequest, upstream db.Upstream) bool {
 		log.Printf("IP condition not matched: %s not in %s", req.RemoteAddr, upstream.ConditionIP)
 		return false
 	}
-
 	// 检查头部条件（且关系）
 	if len(upstream.Headers) > 0 && !h.matchHeaders(req.Headers, upstream.Headers) {
 		log.Printf("Header conditions not matched: expected=%v, actual=%v", upstream.Headers, req.Headers)
 		return false
 	}
-
 	return true
 }
 
@@ -207,14 +196,12 @@ func (h *Handler) matchIP(remoteAddr, conditionIP string) bool {
 	if conditionIP == "" || conditionIP == "0.0.0.0/0" {
 		return true
 	}
-
 	// 解析客户端 IP
 	clientIP := net.ParseIP(remoteAddr)
 	if clientIP == nil {
 		log.Printf("Warning: Invalid client IP: %s", remoteAddr)
 		return false
 	}
-
 	// 检查是否为 CIDR 格式
 	if strings.Contains(conditionIP, "/") {
 		_, ipNet, err := net.ParseCIDR(conditionIP)
@@ -224,14 +211,12 @@ func (h *Handler) matchIP(remoteAddr, conditionIP string) bool {
 		}
 		return ipNet.Contains(clientIP)
 	}
-
 	// 单个 IP 匹配
 	targetIP := net.ParseIP(conditionIP)
 	if targetIP == nil {
 		log.Printf("Warning: Invalid target IP: %s", conditionIP)
 		return false
 	}
-
 	return clientIP.Equal(targetIP)
 }
 
@@ -241,32 +226,26 @@ func (h *Handler) matchHeaders(requestHeaders, expectedHeaders map[string]string
 	if len(expectedHeaders) == 0 {
 		return true
 	}
-
 	// 创建大小写不敏感的请求头部映射
 	normalizedRequestHeaders := make(map[string]string)
 	for key, value := range requestHeaders {
 		normalizedRequestHeaders[strings.ToLower(key)] = value
 	}
-
 	// 检查所有期望的头部条件是否都匹配
 	for expectedKey, expectedValue := range expectedHeaders {
 		normalizedKey := strings.ToLower(expectedKey)
 		actualValue, exists := normalizedRequestHeaders[normalizedKey]
-
 		if !exists {
 			log.Printf("Header not found: %s", expectedKey)
 			return false
 		}
-
 		if actualValue != expectedValue {
 			log.Printf("Header value mismatch: %s expected=%s actual=%s",
 				expectedKey, expectedValue, actualValue)
 			return false
 		}
-
 		log.Printf("Header matched: %s=%s", expectedKey, expectedValue)
 	}
-
 	return true
 }
 
@@ -277,15 +256,12 @@ func (h *Handler) validateUniqueServerName(serverName string, excludeID string) 
 	if excludeID != "" {
 		query = query.Where("id != ?", excludeID)
 	}
-
 	if err := query.Count(&count).Error; err != nil {
 		return fmt.Errorf("failed to check existing rules: %w", err)
 	}
-
 	if count > 0 {
 		return fmt.Errorf("server_name '%s' already exists, one domain can only have one record", serverName)
 	}
-
 	return nil
 }
 
@@ -296,7 +272,6 @@ func (h *Handler) GetRules(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	var responses []*db.RuleResponse
 	for _, rule := range rules {
 		resp, err := rule.ToResponse()
@@ -306,30 +281,26 @@ func (h *Handler) GetRules(c *gin.Context) {
 		}
 		responses = append(responses, resp)
 	}
-
 	c.JSON(http.StatusOK, gin.H{"rules": responses})
 }
 
 // GetRule 获取单个规则
 func (h *Handler) GetRule(c *gin.Context) {
 	id := c.Param("id")
-
 	var rule db.Rule
 	if err := h.db.First(&rule, "id = ?", id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	resp, err := rule.ToResponse()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -340,19 +311,16 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 验证 SSL 配置
 	if err := h.validateSSLConfig(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	// 验证域名和端口组合的唯一性
+	// 验证域名唯一性
 	if err := h.validateUniqueServerName(req.ServerName, ""); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 创建新规则
 	rule := db.Rule{
 		ID:         uuid.New().String(),
@@ -360,24 +328,20 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		SSLCert:    req.SSLCert,
 		SSLKey:     req.SSLKey,
 	}
-
 	// 设置端口和位置
 	if err := rule.SetListenPorts(req.ListenPorts); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set listen ports"})
 		return
 	}
-
 	if err := rule.SetLocations(req.Locations); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set locations"})
 		return
 	}
-
 	// 生成配置文件
 	if err := h.generator.GenerateConfig(&rule); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate config: " + err.Error()})
 		return
 	}
-
 	// 测试 Nginx 配置
 	if err := h.nginxManager.TestConfig(); err != nil {
 		// 配置测试失败，删除生成的配置文件
@@ -387,7 +351,6 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Nginx config test failed: " + err.Error()})
 		return
 	}
-
 	// 保存到数据库
 	if err := h.db.Create(&rule).Error; err != nil {
 		// 数据库保存失败，删除配置文件
@@ -397,15 +360,12 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 清除缓存
 	h.clearRuleCache(rule.ServerName)
-
 	// 重新加载 Nginx
 	if err := h.nginxManager.Reload(); err != nil {
 		log.Printf("Warning: Failed to reload nginx: %v", err)
 	}
-
 	resp, err := rule.ToResponse()
 	if err != nil {
 		log.Printf("Warning: Failed to convert rule to response: %v", err)
@@ -419,7 +379,6 @@ func (h *Handler) CreateRule(c *gin.Context) {
 // UpdateRule 更新规则
 func (h *Handler) UpdateRule(c *gin.Context) {
 	id := c.Param("id")
-
 	var rule db.Rule
 	if err := h.db.First(&rule, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -429,28 +388,23 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	var req CreateRuleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 验证 SSL 配置
 	if err := h.validateSSLConfig(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 验证域名和端口组合的唯一性（排除当前规则）
 	if err := h.validateUniqueServerName(req.ServerName, id); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 保存旧的 server_name 用于清除缓存
 	oldServerName := rule.ServerName
-
 	// 更新规则字段
 	rule.ServerName = req.ServerName
 	rule.SSLCert = req.SSLCert
@@ -460,41 +414,34 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set listen ports"})
 		return
 	}
-
 	if err := rule.SetLocations(req.Locations); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set locations"})
 		return
 	}
-
 	// 重新生成配置文件
 	if err := h.generator.GenerateConfig(&rule); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate config: " + err.Error()})
 		return
 	}
-
 	// 测试 Nginx 配置
 	if err := h.nginxManager.TestConfig(); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Nginx config test failed: " + err.Error()})
 		return
 	}
-
 	// 更新数据库
 	if err := h.db.Save(&rule).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 清除缓存（清除新旧两个 server_name 的缓存）
 	h.clearRuleCache(oldServerName)
 	if oldServerName != rule.ServerName {
 		h.clearRuleCache(rule.ServerName)
 	}
-
 	// 重新加载 Nginx
 	if err := h.nginxManager.Reload(); err != nil {
 		log.Printf("Warning: Failed to reload nginx: %v", err)
 	}
-
 	resp, err := rule.ToResponse()
 	if err != nil {
 		log.Printf("Warning: Failed to convert rule to response: %v", err)
@@ -508,34 +455,29 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 // DeleteRule 删除规则
 func (h *Handler) DeleteRule(c *gin.Context) {
 	id := c.Param("id")
-
 	var rule db.Rule
 	if err := h.db.First(&rule, "id = ?", id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 删除配置文件
 	if err := h.generator.DeleteConfig(rule.ID); err != nil {
 		log.Printf("Warning: Failed to delete config file: %v", err)
 		// 继续执行，不阻止删除操作
 	}
-
 	// 从数据库删除
 	if err := h.db.Delete(&rule).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 重新加载 Nginx
 	if err := h.nginxManager.Reload(); err != nil {
 		log.Printf("Warning: Failed to reload nginx: %v", err)
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Rule deleted successfully"})
 }
 
@@ -545,7 +487,6 @@ func (h *Handler) ReloadNginx(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Nginx reloaded successfully"})
 }
 
@@ -555,12 +496,27 @@ func (h *Handler) RegenerateAllConfigs() error {
 	if err := h.db.Find(&rules).Error; err != nil {
 		return err
 	}
-
+	errorMessages := ""
 	for _, rule := range rules {
+		if err := h.generator.DeleteConfig(rule.ID); err != nil {
+			errorMessages += err.Error() + "\n"
+			log.Printf("Failed to delete config for rule %s: %v", rule.ID, err)
+		}
 		if err := h.generator.GenerateConfig(&rule); err != nil {
+			errorMessages += err.Error() + "\n"
 			log.Printf("Failed to regenerate config for rule %s: %v", rule.ID, err)
 		}
 	}
+	if err := h.nginxManager.TestConfig(); err != nil {
+		errorMessages += err.Error() + "\n"
+		log.Printf("Failed to test config for rule %v", err)
+	} else if err := h.nginxManager.Reload(); err != nil {
+		errorMessages += err.Error() + "\n"
+		log.Printf("Warning: Failed to reload nginx: %v", err)
+	}
 
+	if len(errorMessages) != 0 {
+		return fmt.Errorf(errorMessages)
+	}
 	return nil
 }

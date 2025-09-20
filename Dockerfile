@@ -31,7 +31,7 @@ RUN apk --no-cache add ca-certificates curl \
 COPY --from=builder /app/bin/nginx-proxy /usr/local/bin/nginx-proxy
 
 # 创建必要的目录
-RUN mkdir -p /app/data /app/config /app/template /app/web/static /etc/nginx/certs \
+RUN mkdir -p /app/data /app/config /app/logs /app/template /app/web/static /etc/nginx/certs \
     /var/log/nginx /var/cache/nginx
 
 # 复制默认配置和模板
@@ -70,6 +70,12 @@ VOLUME ["/app/data", "/etc/nginx/conf.d", "/etc/nginx/certs", "/var/log/nginx", 
 
 # 暴露端口
 EXPOSE 80 443 8080
+
+ENV TENCENT_SECRET_ID = ""
+ENV TENCENT_SECRET_KEY = ""
+ENV TENCENT_REGION = "ap-beijing"
+ENV CLOUDFLARE_TOKEN = ""
+ENV CLOUDFLARE_DOMAINS = "a.com;b.com"
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

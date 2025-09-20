@@ -27,9 +27,108 @@
             transform: translateY(-2px);
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
         }
+
+        /* 提示框样式 */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+
+        .toast {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            margin-bottom: 10px;
+            padding: 16px 20px;
+            min-width: 300px;
+            max-width: 400px;
+            transform: translateX(100%);
+            opacity: 0;
+            transition: all 0.3s ease;
+            border-left: 4px solid #007bff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+            opacity: 1;
+        }
+
+        .toast.success {
+            border-left-color: #10b981;
+        }
+
+        .toast.error {
+            border-left-color: #ef4444;
+        }
+
+        .toast.warning {
+            border-left-color: #f59e0b;
+        }
+
+        .toast.info {
+            border-left-color: #3b82f6;
+        }
+
+        .toast-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+
+        .toast-icon {
+            margin-right: 12px;
+            font-size: 18px;
+        }
+
+        .toast-message {
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #999;
+            padding: 0;
+            margin-left: 12px;
+        }
+
+        .toast-close:hover {
+            color: #666;
+        }
+
+        .toast.success .toast-icon::before {
+            content: "✓";
+            color: #10b981;
+        }
+
+        .toast.error .toast-icon::before {
+            content: "✕";
+            color: #ef4444;
+        }
+
+        .toast.warning .toast-icon::before {
+            content: "⚠";
+            color: #f59e0b;
+        }
+
+        .toast.info .toast-icon::before {
+            content: "ℹ";
+            color: #3b82f6;
+        }
     </style>
 </head>
 <body class="bg-gray-50 font-sans">
+<!-- 提示框容器 -->
+<div id="toast-container" class="toast-container"></div>
+
 <!-- 侧边栏 -->
 <div id="sidebar"
      class="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg sidebar-transition transform -translate-x-full lg:translate-x-0">
@@ -171,11 +270,23 @@
                     <h2 class="text-2xl font-bold text-gray-900">证书管理</h2>
                     <p class="text-gray-600">管理SSL证书</p>
                 </div>
-                <button id="add-certificate-btn"
-                        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
-                    <i class="fas fa-plus mr-2"></i>
-                    上传证书
-                </button>
+                <div class="flex space-x-3">
+                    <button id="add-certificate-btn"
+                            class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
+                        <i class="fas fa-upload mr-2"></i>
+                        上传证书
+                    </button>
+                    <button id="apply-tencent-certificate-btn"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
+                        <i class="fas fa-cloud mr-2"></i>
+                        申请腾讯云证书
+                    </button>
+                    <button id="batch-renew-tencent-certificates-btn"
+                            class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
+                        <i class="fas fa-sync-alt mr-2"></i>
+                        批量续期
+                    </button>
+                </div>
             </div>
 
             <div class="bg-white rounded-lg shadow-sm">
@@ -195,6 +306,9 @@
                                 </th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     状态
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    来源
                                 </th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     操作
@@ -278,11 +392,18 @@
                     <input type="checkbox" id="proxy-ssl" class="mr-2">
                     <label for="proxy-ssl" class="text-sm text-gray-700">启用SSL</label>
                 </div>
-                <div id="ssl-config" class="hidden">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">选择证书</label>
-                    <select id="proxy-certificate" class="w-full border border-gray-300 rounded-md px-3 py-2">
-                        <option value="">选择证书...</option>
-                    </select>
+                <div id="ssl-config" class="hidden space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">选择证书</label>
+                        <select id="proxy-certificate" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            <option value="">选择证书...</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="proxy-http-redirect" class="mr-2" checked>
+                        <label for="proxy-http-redirect" class="text-sm text-gray-700">同时启用HTTP
+                            80端口（自动重定向到HTTPS）</label>
+                    </div>
                 </div>
                 <div class="flex justify-end space-x-4 pt-4">
                     <button type="button" id="cancel-add-proxy"
@@ -333,11 +454,18 @@
                     <input type="checkbox" id="edit-proxy-ssl" class="mr-2">
                     <label for="edit-proxy-ssl" class="text-sm text-gray-700">启用SSL</label>
                 </div>
-                <div id="edit-ssl-config" class="hidden">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">选择证书</label>
-                    <select id="edit-proxy-certificate" class="w-full border border-gray-300 rounded-md px-3 py-2">
-                        <option value="">选择证书...</option>
-                    </select>
+                <div id="edit-ssl-config" class="hidden space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">选择证书</label>
+                        <select id="edit-proxy-certificate" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            <option value="">选择证书...</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="edit-proxy-http-redirect" class="mr-2" checked>
+                        <label for="edit-proxy-http-redirect" class="text-sm text-gray-700">同时启用HTTP
+                            80端口（自动重定向到HTTPS）</label>
+                    </div>
                 </div>
                 <div class="flex justify-end space-x-4 pt-4">
                     <button type="button" id="cancel-edit-proxy"
@@ -386,6 +514,54 @@
                     </button>
                     <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md">
                         上传
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 申请腾讯云证书模态框 -->
+<div id="apply-tencent-certificate-modal"
+     class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">申请腾讯云免费证书</h3>
+                <button id="close-tencent-certificate-modal" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="apply-tencent-certificate-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">域名</label>
+                    <input type="text" id="tencent-domain" class="w-full border border-gray-300 rounded-md px-3 py-2"
+                           placeholder="example.com" required>
+                    <p class="text-xs text-gray-500 mt-1">请输入需要申请证书的域名</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">证书别名</label>
+                    <input type="text" id="tencent-cert-alias"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2"
+                           placeholder="nginx-proxy-cert">
+                    <p class="text-xs text-gray-500 mt-1">用于标识证书的名称</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">验证方式</label>
+                    <select id="tencent-validate-type" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                        <option value="DNS_AUTO">DNS自动验证（推荐）</option>
+                        <option value="DNS">DNS手动验证</option>
+                        <option value="FILE_VALIDATION">文件验证</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">选择域名验证方式</p>
+                </div>
+                <div class="flex justify-end space-x-4 pt-4">
+                    <button type="button" id="cancel-apply-tencent-certificate"
+                            class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-md">
+                        取消
+                    </button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
+                        申请证书
                     </button>
                 </div>
             </form>

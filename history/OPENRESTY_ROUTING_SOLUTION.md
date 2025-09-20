@@ -148,6 +148,7 @@ func (h *Handler) RouteMatch(c *gin.Context) {
 ### 2. 确保 OpenResty 环境
 
 需要安装 OpenResty 并确保包含以下 Lua 模块：
+
 - `resty.http` - HTTP 客户端
 - `cjson` - JSON 编解码
 
@@ -174,6 +175,7 @@ curl -X POST http://localhost:8080/api/route-match \
 ```
 
 期望响应：
+
 ```json
 {
   "match": true,
@@ -184,6 +186,7 @@ curl -X POST http://localhost:8080/api/route-match \
 ## 优势对比
 
 ### 原方案（复杂变量操作）
+
 ```nginx
 set $match0_h0 0;
 set $match0_h1 0;
@@ -197,6 +200,7 @@ if ($match0_h0$match0_h1$match0_h2 = "111") {
 ```
 
 ### 新方案（OpenResty + Go）
+
 - ✅ 逻辑清晰，易于理解
 - ✅ 支持复杂的条件判断（如正则、范围等）
 - ✅ 便于调试和日志记录
@@ -213,6 +217,7 @@ if ($match0_h0$match0_h1$match0_h2 = "111") {
 ## 扩展能力
 
 这种架构支持未来的扩展需求：
+
 - 基于 IP 地理位置的路由
 - 基于请求频率的限流路由
 - 基于用户认证状态的路由

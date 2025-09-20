@@ -7,6 +7,7 @@
 ## 🏗️ 架构演进
 
 ### 原始问题
+
 ```nginx
 # 问题：多个独立 if 语句导致"或"关系，而非期望的"且"关系
 if ($http_tt = "t") {
@@ -21,6 +22,7 @@ if ($http_x_token = "123") {
 ```
 
 ### 最终解决方案
+
 ```lua
 -- OpenResty Lua 脚本调用 Go 接口
 access_by_lua_block {
@@ -44,14 +46,14 @@ access_by_lua_block {
 
 ## 📊 技术栈
 
-| 组件 | 技术 | 版本 | 用途 |
-|------|------|------|------|
-| 反向代理 | OpenResty | latest | 高性能 Nginx + Lua |
-| 后端服务 | Go | 1.21+ | 路由逻辑处理 |
-| Web 框架 | Gin | v1.9+ | HTTP API 服务 |
-| 数据库 | SQLite | v3 | 配置存储 |
-| ORM | GORM | v1.25+ | 数据库操作 |
-| 容器化 | Docker | - | 部署运行 |
+| 组件     | 技术        | 版本     | 用途              |
+|--------|-----------|--------|-----------------|
+| 反向代理   | OpenResty | latest | 高性能 Nginx + Lua |
+| 后端服务   | Go        | 1.21+  | 路由逻辑处理          |
+| Web 框架 | Gin       | v1.9+  | HTTP API 服务     |
+| 数据库    | SQLite    | v3     | 配置存储            |
+| ORM    | GORM      | v1.25+ | 数据库操作           |
+| 容器化    | Docker    | -      | 部署运行            |
 
 ## 🔄 工作流程
 

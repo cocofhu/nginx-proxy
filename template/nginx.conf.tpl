@@ -30,12 +30,20 @@ server {
         access_by_lua_block {
             local http = require "resty.http"
             local cjson = require "cjson"
-            
+            local raw_headers = ngx.req.get_headers()
+            local headers = {}
+            for k, v in pairs(raw_headers) do
+                if type(v) == "table" then
+                    headers[k] = table.concat(v, ",")
+                else
+                    headers[k] = v
+                end
+            end
             -- 只传递必要的请求信息，配置由 Go 服务查询
             local request_data = {
                 path = ngx.var.uri,
                 remote_addr = ngx.var.remote_addr,
-                headers = ngx.req.get_headers(),
+                headers = headers,
                 server_name = ngx.var.server_name
             }
             
@@ -76,6 +84,12 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $server_name;
+        {{- if and $.SSLCert $.SSLKey }}
+        proxy_set_header X-Forwarded-Ssl on;
+        {{- end }}
+
+        proxy_pass_request_headers on;
+        proxy_pass_request_body on;
 
         # 代理超时设置
         proxy_connect_timeout 30s;

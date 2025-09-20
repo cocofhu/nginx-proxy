@@ -134,8 +134,8 @@ func (h *Handler) matchHeaders(requestHeaders, expectedHeaders map[string]string
    ```
 
 2. **确保 OpenResty 环境**：
-   - 安装 OpenResty
-   - 确保包含 `resty.http` 和 `cjson` 模块
+    - 安装 OpenResty
+    - 确保包含 `resty.http` 和 `cjson` 模块
 
 3. **测试配置**：
    使用 `examples/openresty-routing-example.json`
@@ -143,7 +143,7 @@ func (h *Handler) matchHeaders(requestHeaders, expectedHeaders map[string]string
 ## 优势
 
 - ✅ **逻辑简化**：避免复杂的 nginx 变量操作
-- ✅ **易于扩展**：可以轻松添加更复杂的路由规则  
+- ✅ **易于扩展**：可以轻松添加更复杂的路由规则
 - ✅ **便于调试**：路由逻辑集中在 Go 代码中
 - ✅ **性能优化**：减少 nginx 配置复杂度
 
@@ -181,6 +181,7 @@ curl -X POST http://localhost:8080/api/route \
 ```
 
 期望响应（匹配成功）：
+
 ```json
 {
   "target": "http://21.91.124.161:8080"
@@ -188,6 +189,7 @@ curl -X POST http://localhost:8080/api/route \
 ```
 
 期望响应（匹配失败，使用默认）：
+
 ```json
 {
   "target": ""

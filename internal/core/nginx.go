@@ -33,7 +33,6 @@ func (n *NginxManager) Reload() error {
 	if err := n.TestConfig(); err != nil {
 		return err
 	}
-
 	// 执行重新加载
 	cmd := exec.Command(n.nginxPath, "-s", "reload")
 	output, err := cmd.CombinedOutput()
@@ -41,14 +40,4 @@ func (n *NginxManager) Reload() error {
 		return fmt.Errorf("nginx reload failed: %s, output: %s", err, string(output))
 	}
 	return nil
-}
-
-// GetVersion 获取 Nginx 版本信息
-func (n *NginxManager) GetVersion() (string, error) {
-	cmd := exec.Command(n.nginxPath, "-v")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("failed to get nginx version: %s", err)
-	}
-	return string(output), nil
 }

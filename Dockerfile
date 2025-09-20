@@ -71,11 +71,11 @@ VOLUME ["/app/data", "/etc/nginx/conf.d", "/etc/nginx/certs", "/var/log/nginx", 
 # 暴露端口
 EXPOSE 80 443 8080
 
-ENV TENCENT_SECRET_ID  ""
-ENV TENCENT_SECRET_KEY  ""
-ENV TENCENT_REGION  "ap-beijing"
-ENV CLOUDFLARE_TOKEN  ""
-ENV CLOUDFLARE_DOMAINS  "a.com;b.com"
+ENV TENCENT_SECRET_ID = ""
+ENV TENCENT_SECRET_KEY = ""
+ENV TENCENT_REGION = "ap-beijing"
+ENV CLOUDFLARE_TOKEN = ""
+ENV CLOUDFLARE_DOMAINS = "a.com;b.com"
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

@@ -16,6 +16,7 @@ docker-build:
     DOCKER_TLS_CERTDIR: ""
     DOCKER_DRIVER: overlay2
   script:
+    - echo "Build Start!!"
     - if [ -n "$CI_COMMIT_TAG" ]; then export VERSION="$CI_COMMIT_TAG"; else export VERSION="v1.1.4-${CI_COMMIT_SHORT_SHA}"; fi
     - export DOCKER_IMAGE_NAME="$DOCKER_REGISTRY/nginx-proxy:$VERSION"
     - export DOCKER_IMAGE_LATEST="$DOCKER_REGISTRY/nginx-proxy:latest"

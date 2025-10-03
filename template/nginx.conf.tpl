@@ -98,9 +98,10 @@ server {
 
         # 缓冲设置
         proxy_buffering on;
-        proxy_buffer_size 4k;
-        proxy_buffers 8 4k;
-        proxy_busy_buffers_size 8k;
+        
+        proxy_busy_buffers_size 512k;
+        proxy_buffers 16 512k;
+        proxy_buffer_size 512k;
 
         # 错误处理
         proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;

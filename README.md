@@ -71,26 +71,46 @@
 使用 Docker 一键部署 OpenResty + Go 服务：
 
 ```bash
-# 1. 克隆项目
-git clone <repository-url>
-cd nginx-proxy
 
-# 2. 构建 OpenResty 镜像
-docker build -t nginx-proxy-openresty .
-
-# 3. 启动服务
-docker run -d \
-  --name nginx-proxy \
+# quick start
+docker run --restart always -d --name nginx-proxy \
   -p 80:80 \
   -p 443:443 \
-  -p 8080:8080 \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/nginx-conf:/etc/nginx/conf.d \
-  -v $(pwd)/nginx-certs:/etc/nginx/certs \
-  nginx-proxy-openresty
+  -e TENCENT_SECRET_ID=ak \
+  -e TENCENT_SECRET_KEY=sk \
+  -e TENCENT_REGION=ap-beijing \
+  -e CLOUDFLARE_TOKEN=token \
+  -e CLOUDFLARE_DOMAINS=cocofhu.cc \
+  -e SERVICE_NAME=bridge \
+  -e SERVICE_PORT=8080 \
+  -e SERVICE_CHECK_TCP=true \
+  -e SERVICE_CHECK_DEREGISTER_AFTER=30s \
+  --volume /volume1/docker/nginx-proxy/data:/app/data \
+  --volume /volume1/docker/nginx-proxy/logs:/app/logs \
+  --volume /volume1/docker/nginx-proxy/certs:/etc/nginx/certs \
+  --volume /volume1/docker/nginx-proxy/config:/etc/nginx/conf.d \
+  --volume /volume1/docker/nginx-proxy/nginx-logs:/var/log/nginx \
+  --volume /volume1/docker/nginx-proxy/nginx-logs:/var/log/nginx \
+  ccr.ccs.tencentyun.com/cocofhu/nginx-proxy
 
-# 4. 访问管理界面
-open http://localhost:8080
+# macvlan
+docker run --restart always -d --name nginx-proxy --net=macvlan_net \
+  -e TENCENT_SECRET_ID=ak \
+  -e TENCENT_SECRET_KEY=sk \
+  -e TENCENT_REGION=ap-beijing \
+  -e CLOUDFLARE_TOKEN=token \
+  -e CLOUDFLARE_DOMAINS=cocofhu.cc \
+  -e SERVICE_NAME=bridge \
+  -e SERVICE_PORT=8080 \
+  -e SERVICE_CHECK_TCP=true \
+  -e SERVICE_CHECK_DEREGISTER_AFTER=30s \
+  --volume /volume1/docker/nginx-proxy/data:/app/data \
+  --volume /volume1/docker/nginx-proxy/logs:/app/logs \
+  --volume /volume1/docker/nginx-proxy/certs:/etc/nginx/certs \
+  --volume /volume1/docker/nginx-proxy/config:/etc/nginx/conf.d \
+  --volume /volume1/docker/nginx-proxy/nginx-logs:/var/log/nginx \
+  --volume /volume1/docker/nginx-proxy/nginx-logs:/var/log/nginx \
+  ccr.ccs.tencentyun.com/cocofhu/nginx-proxy
 ```
 
 ### Web 管理界面

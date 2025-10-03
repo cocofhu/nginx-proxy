@@ -90,18 +90,15 @@ server {
 
         proxy_pass_request_headers on;
         proxy_pass_request_body on;
+        # websocket 支持
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
 
         # 代理超时设置
         proxy_connect_timeout 30s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
-
-        # 缓冲设置
-        proxy_buffering on;
-        
-        proxy_busy_buffers_size 512k;
-        proxy_buffers 16 512k;
-        proxy_buffer_size 512k;
 
         # 错误处理
         proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;

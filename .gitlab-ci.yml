@@ -7,7 +7,7 @@ docker-build:
   services:
     - name: docker:dind
       entrypoint: [ "env", "-u", "DOCKER_HOST" ]
-      command: [ "dockerd-entrypoint.sh", "--insecure-registry=registry.service.arpa:443" ]
+      command: [ "dockerd-entrypoint.sh", "--insecure-registry=registry.service.cc:443" ]
   variables:
     # issue https://gitlab.com/gitlab-org/gitlab-runner/-/issues/4566#note_199261985
     DOCKER_REGISTRY: registry.service.arpa:443

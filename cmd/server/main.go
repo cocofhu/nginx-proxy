@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -33,14 +34,32 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	log.SetOutput(&lumberjack.Logger{
-		Filename:   "./logs/app.log", // 不直接加日期
-		MaxSize:    10,               // MB
+	// 确保 logs 目录存在
+	if err := os.MkdirAll("./logs", 0755); err != nil {
+		log.Fatalf("Failed to create logs directory: %v", err)
+	}
+
+	// 设置应用日志输出到文件
+	appLogger := &lumberjack.Logger{
+		Filename:   "./logs/app.log",
+		MaxSize:    10, // MB
 		MaxBackups: 7,
 		MaxAge:     30, // 保留天数
 		Compress:   true,
-	})
+	}
+	log.SetOutput(appLogger)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	// 设置 Gin 日志输出到文件
+	ginLogger := &lumberjack.Logger{
+		Filename:   "./logs/gin.log",
+		MaxSize:    10, // MB
+		MaxBackups: 7,
+		MaxAge:     30, // 保留天数
+		Compress:   true,
+	}
+	gin.DefaultWriter = io.MultiWriter(ginLogger, os.Stdout) // 同时输出到文件和控制台
+	gin.DefaultErrorWriter = io.MultiWriter(ginLogger, os.Stderr) // 错误日志也输出到文件和控制台
 
 	// 初始化数据库 - 使用纯 Go SQLite 驱动
 	database, err := gorm.Open(sqlite.Dialector{

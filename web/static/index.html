@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nginx Proxy 管理界面</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/fontawesome.min.css" rel="stylesheet">
     <style>
         .sidebar-transition {
             transition: transform 0.3s ease-in-out;
@@ -400,7 +400,7 @@
                         </select>
                     </div>
                     <div class="flex items-center">
-                        <input type="checkbox" id="proxy-http-redirect" class="mr-2" checked>
+                        <input type="checkbox" id="proxy-http-redirect" class="mr-2" checked disabled>
                         <label for="proxy-http-redirect" class="text-sm text-gray-700">同时启用HTTP
                             80端口（自动重定向到HTTPS）</label>
                     </div>

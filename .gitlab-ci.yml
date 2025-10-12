@@ -7,17 +7,17 @@ docker-build:
   services:
     - name: docker:dind
       entrypoint: [ "env", "-u", "DOCKER_HOST" ]
-      command: [ "dockerd-entrypoint.sh", "--insecure-registry=registry.service.cc:443" ]
+      command: [ "dockerd-entrypoint.sh", "--insecure-registry=registry.cocofhu.cc:443" ]
   variables:
     # issue https://gitlab.com/gitlab-org/gitlab-runner/-/issues/4566#note_199261985
-    DOCKER_REGISTRY: registry.service.cc:443
+    DOCKER_REGISTRY: registry.cocofhu.cc:443
     DOCKER_HOST: tcp://docker:2375
     TENCENT_REGISTRY: ccr.ccs.tencentyun.com
     DOCKER_TLS_CERTDIR: ""
     DOCKER_DRIVER: overlay2
   script:
     - echo "Build Start!!"
-    - if [ -n "$CI_COMMIT_TAG" ]; then export VERSION="$CI_COMMIT_TAG"; else export VERSION="v1.1.5-${CI_COMMIT_SHORT_SHA}"; fi
+    - if [ -n "$CI_COMMIT_TAG" ]; then export VERSION="$CI_COMMIT_TAG"; else export VERSION="v1.1.6-${CI_COMMIT_SHORT_SHA}"; fi
     - export DOCKER_IMAGE_NAME="$DOCKER_REGISTRY/nginx-proxy:$VERSION"
     - export DOCKER_IMAGE_LATEST="$DOCKER_REGISTRY/nginx-proxy:latest"
     - export DOCKER_IMAGE_TENCENT="$TENCENT_REGISTRY/cocofhu/nginx-proxy:$VERSION"

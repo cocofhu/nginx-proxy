@@ -97,8 +97,8 @@ server {
 
         # 代理超时设置
         proxy_connect_timeout 30s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 3600s;
 
         # 错误处理
         proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;

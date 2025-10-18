@@ -66,7 +66,7 @@ deploy-service:
     - export DOCKER_IMAGE_NAME=$(cat image_name.txt)
     - export DEPLOY_NAME=$(cat deploy_name.txt)
     - |
-      http_code=$(curl -X POST http://deploy.service.cc:8080/deploy \
+      http_code=$(curl -s -o response.txt -w "%{http_code}" -X POST http://deploy.service.cc:8080/deploy \
         -H "Content-Type: application/json" \
         -d "{
           \"image\": \"$DOCKER_IMAGE_NAME\",
@@ -77,6 +77,7 @@ deploy-service:
           \"network\": \"macvlan_net\"
         }")
       echo "http code: $http_code"
+      cat response.txt
       if [ "$http_code" = "200" ]; then
             echo "Deploy completed!"
           else

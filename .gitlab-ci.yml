@@ -36,6 +36,14 @@ docker-build:
         docker tag "$DOCKER_IMAGE_NAME" "$DOCKER_IMAGE_TENCENT_LATEST"
         docker push "$DOCKER_IMAGE_TENCENT_LATEST"
       fi
+    - |
+    - if [ "$CI_COMMIT_REF_NAME" = "$CI_DEFAULT_BRANCH" ]; then
+    - export DEPLOY_NAME="bridge"
+    - else
+    - export DEPLOY_NAME="bridge-dev"
+    - fi
+    - echo "$DOCKER_IMAGE_NAME" > image_name.txt
+    - echo "$DEPLOY_NAME" > deploy_name.txt
     - echo "Build success!!"
   rules:
     - if: $CI_COMMIT_BRANCH
@@ -44,20 +52,19 @@ docker-build:
     - if: $CI_COMMIT_TAG
       exists:
         - Dockerfile
+  artifacts:
+    paths:
+      - image_name.txt
+      - deploy_name.txt
+    expire_in: never
 
 deploy-service:
   image: curlimages/curl:latest
   stage: deploy
   script:
     - echo "Start deployment!"
-    - if [ -n "$CI_COMMIT_TAG" ]; then export VERSION="$CI_COMMIT_TAG"; else export VERSION="v1.1.6-${CI_COMMIT_SHORT_SHA}"; fi
-    - export DOCKER_IMAGE_NAME="$DOCKER_REGISTRY/nginx-proxy:$VERSION"
-    - |
-    - if [ "$CI_COMMIT_REF_NAME" = "$CI_DEFAULT_BRANCH" ]; then
-    - export DEPLOY_NAME="bridge"
-    - else
-    - export DEPLOY_NAME="bridge-dev"
-    - fi
+    - export DOCKER_IMAGE_NAME=$(cat image_name.txt)
+    - export DOCKER_IMAGE_NAME=$(cat deploy_name.txt)
     - |
       curl -X POST http://deploy.service.cc:8080/deploy \
         -H "Content-Type: application/json" \

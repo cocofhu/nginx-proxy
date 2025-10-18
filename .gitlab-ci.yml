@@ -64,19 +64,24 @@ deploy-service:
   script:
     - echo "Start deployment!"
     - export DOCKER_IMAGE_NAME=$(cat image_name.txt)
-    - export DOCKER_IMAGE_NAME=$(cat deploy_name.txt)
+    - export DEPLOY_NAME=$(cat deploy_name.txt)
     - |
-      curl -X POST http://deploy.service.cc:8080/deploy \
+      http_code=curl -X POST http://deploy.service.cc:8080/deploy \
         -H "Content-Type: application/json" \
-        -d '{
-          "image": "$DOCKER_IMAGE_NAME",
-          "name": "$DEPLOY_NAME",
-          "env": ["TENCENT_SECRET_ID=$TENCENT_SECRET_ID", "TENCENT_SECRET_KEY=$TENCENT_SECRET_KEY", "TENCENT_REGION=ap-beijing", "CLOUDFLARE_TOKEN=$CLOUDFLARE_TOKEN", "CLOUDFLARE_DOMAINS=cocofhu.cc", "SERVICE_NAME=$DEPLOY_NAME", "SERVICE_PORT=8080", "SERVICE_CHECK_TCP=true", "SERVICE_CHECK_DEREGISTER_AFTER=30s"],
-          "volumes": ["/volume1/docker/nginx-proxy/data:/app/data", "/volume1/docker/nginx-proxy/logs:/app/logs", "/volume1/docker/nginx-proxy/certs:/etc/nginx/certs", "/volume1/docker/nginx-proxy/config:/etc/nginx/conf.d", "/volume1/docker/nginx-proxy/nginx-logs:/var/log/nginx"],
-          "restart": "unless-stopped",
-          "network": "macvlan_net"
-        }'
-    - echo "Deploy completed!"
+        -d "{
+          \"image\": \"$DOCKER_IMAGE_NAME\",
+          \"name\": \"$DEPLOY_NAME\",
+          \"env\": [\"TENCENT_SECRET_ID=$TENCENT_SECRET_ID\", \"TENCENT_SECRET_KEY=$TENCENT_SECRET_KEY\", \"TENCENT_REGION=ap-beijing\", \"CLOUDFLARE_TOKEN=$CLOUDFLARE_TOKEN\", \"CLOUDFLARE_DOMAINS=cocofhu.cc\", \"SERVICE_NAME=$DEPLOY_NAME\", \"SERVICE_PORT=8080\", \"SERVICE_CHECK_TCP=true\", \"SERVICE_CHECK_DEREGISTER_AFTER=30s\"],
+          \"volumes\": [\"/volume1/docker/nginx-proxy/data:/app/data\", \"/volume1/docker/nginx-proxy/logs:/app/logs\", \"/volume1/docker/nginx-proxy/certs:/etc/nginx/certs\", \"/volume1/docker/nginx-proxy/config:/etc/nginx/conf.d\", \"/volume1/docker/nginx-proxy/nginx-logs:/var/log/nginx\"],
+          \"restart\": \"unless-stopped\",
+          \"network\": \"macvlan_net\"
+        }"
+      if [ "$http_code" = "200" ]; then
+            echo "Deploy completed!"
+          else
+            echo "Deploy failed!"
+            exit 1
+      fi
   rules:
     - if: $CI_COMMIT_BRANCH
       exists:

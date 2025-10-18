@@ -8,10 +8,10 @@ docker-build:
   services:
     - name: docker:dind
       entrypoint: [ "env", "-u", "DOCKER_HOST" ]
-      command: [ "dockerd-entrypoint.sh", "--insecure-registry=registry.cocofhu.cc:443" ]
+      command: [ "dockerd-entrypoint.sh", "--insecure-registry=registry.cocofhu.cc" ]
   variables:
     # issue https://gitlab.com/gitlab-org/gitlab-runner/-/issues/4566#note_199261985
-    DOCKER_REGISTRY: registry.cocofhu.cc:443
+    DOCKER_REGISTRY: registry.cocofhu.cc
     DOCKER_HOST: tcp://docker:2375
     TENCENT_REGISTRY: ccr.ccs.tencentyun.com
     DOCKER_TLS_CERTDIR: ""

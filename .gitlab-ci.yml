@@ -1,5 +1,6 @@
 stages:
   - build
+  - deploy
 
 docker-build:
   image: docker:cli
@@ -17,7 +18,7 @@ docker-build:
     DOCKER_DRIVER: overlay2
   script:
     - echo "Build Start!!"
-    - if [ -n "$CI_COMMIT_TAG" ]; then export VERSION="$CI_COMMIT_TAG"; else export VERSION="v1.1.6-${CI_COMMIT_SHORT_SHA}"; fi
+    - if [ -n "$CI_COMMIT_TAG" ]; then export VERSION="$CI_COMMIT_TAG"; else export VERSION="v1.2.0-${CI_COMMIT_SHORT_SHA}"; fi
     - export DOCKER_IMAGE_NAME="$DOCKER_REGISTRY/nginx-proxy:$VERSION"
     - export DOCKER_IMAGE_LATEST="$DOCKER_REGISTRY/nginx-proxy:latest"
     - export DOCKER_IMAGE_TENCENT="$TENCENT_REGISTRY/cocofhu/nginx-proxy:$VERSION"
@@ -35,11 +36,56 @@ docker-build:
         docker tag "$DOCKER_IMAGE_NAME" "$DOCKER_IMAGE_TENCENT_LATEST"
         docker push "$DOCKER_IMAGE_TENCENT_LATEST"
       fi
+    - |
+    - if [ "$CI_COMMIT_REF_NAME" = "$CI_DEFAULT_BRANCH" ]; then
+    - export DEPLOY_NAME="bridge"
+    - else
+    - export DEPLOY_NAME="bridge-dev"
+    - fi
+    - echo "$DOCKER_IMAGE_NAME" > image_name.txt
+    - echo "$DEPLOY_NAME" > deploy_name.txt
     - echo "Build success!!"
   rules:
     - if: $CI_COMMIT_BRANCH
       exists:
         - Dockerfile
     - if: $CI_COMMIT_TAG
+      exists:
+        - Dockerfile
+  artifacts:
+    paths:
+      - image_name.txt
+      - deploy_name.txt
+    expire_in: never
+
+deploy-service:
+  image: curlimages/curl:latest
+  stage: deploy
+  script:
+    - echo "Start deployment!"
+    - export DOCKER_IMAGE_NAME=$(cat image_name.txt)
+    - export DEPLOY_NAME=$(cat deploy_name.txt)
+    - |
+      http_code=$(curl -s -o response.txt -w "%{http_code}" -X POST http://deploy.service.cc:8080/deploy \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $DEPLOY_TOKEN" \
+        -d "{
+          \"image\": \"$DOCKER_IMAGE_NAME\",
+          \"name\": \"$DEPLOY_NAME\",
+          \"env\": [\"TENCENT_SECRET_ID=$TENCENT_SECRET_ID\", \"TENCENT_SECRET_KEY=$TENCENT_SECRET_KEY\", \"TENCENT_REGION=ap-beijing\", \"CLOUDFLARE_TOKEN=$CLOUDFLARE_TOKEN\", \"CLOUDFLARE_DOMAINS=cocofhu.cc\", \"SERVICE_NAME=$DEPLOY_NAME\", \"SERVICE_PORT=8080\", \"SERVICE_CHECK_TCP=true\", \"SERVICE_CHECK_DEREGISTER_AFTER=30s\"],
+          \"volumes\": [\"/volume1/docker/nginx-proxy/data:/app/data\", \"/volume1/docker/nginx-proxy/logs:/app/logs\", \"/volume1/docker/nginx-proxy/certs:/etc/nginx/certs\", \"/volume1/docker/nginx-proxy/config:/etc/nginx/conf.d\", \"/volume1/docker/nginx-proxy/nginx-logs:/var/log/nginx\"],
+          \"restart\": \"unless-stopped\",
+          \"network\": \"macvlan_net\"
+        }")
+      echo "http code: $http_code"
+      cat response.txt
+      if [ "$http_code" = "200" ]; then
+            echo "Deploy completed!"
+          else
+            echo "Deploy failed!"
+            exit 1
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH
       exists:
         - Dockerfile

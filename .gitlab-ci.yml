@@ -76,6 +76,7 @@ deploy-service:
           \"restart\": \"unless-stopped\",
           \"network\": \"macvlan_net\"
         }")
+      echo "http code: $http_code"
       if [ "$http_code" = "200" ]; then
             echo "Deploy completed!"
           else

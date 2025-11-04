@@ -794,11 +794,12 @@ function createProxy() {
     let listenPorts = [80]; // 默认启用HTTP 80
 
     if (sslEnabled) {
-        listenPorts.push(443); // 启用HTTPS 443
-        if (!httpRedirect) {
-            // 如果不启用HTTP重定向，则只使用HTTPS端口
-            listenPorts = [443];
-        }
+        // listenPorts.push(443); // 启用HTTPS 443
+        // if (!httpRedirect) {
+        //     // 如果不启用HTTP重定向，则只使用HTTPS端口
+        //     listenPorts = [443];
+        // }
+        listenPorts = [443];
     }
 
     const requestData = {

@@ -25,8 +25,9 @@ server {
     location {{ .Path }} {
 
         # ======================
-        # 🌐 全局 CORS 允许所有来源
+        # 公网页面→内网资源 这种访问判为 跨地址空间
         # ======================
+        # chrome://flags/#local-network-access-check
         add_header 'Access-Control-Allow-Private-Network' 'true' always;
 
         # 先定义变量

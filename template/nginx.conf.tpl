@@ -24,9 +24,23 @@ server {
     {{- range .Locations }}
     location {{ .Path }} {
 
-        # Private Network Access(PNA)
+        # ======================
+        # 🌐 全局 CORS 允许所有来源
+        # ======================
         add_header 'Access-Control-Allow-Private-Network' 'true' always;
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' '*' always;
 
+        # 处理预检 OPTIONS 请求
+        if ($request_method = OPTIONS) {
+            add_header 'Access-Control-Allow-Origin' '*' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' '*' always;
+            add_header 'Content-Length' 0;
+            add_header 'Content-Type' 'text/plain; charset=UTF-8';
+            return 204;
+        }
         # 先定义变量
         set $backend "";
         

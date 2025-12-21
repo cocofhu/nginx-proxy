@@ -24,10 +24,8 @@ server {
     {{- range .Locations }}
     location {{ .Path }} {
 
-        # ======================
-        # 🌐 全局 CORS 允许所有来源
-        # ======================
-        add_header Access-Control-Allow-Private-Network true always;
+        # Private Network Access(PNA)
+        add_header 'Access-Control-Allow-Private-Network' 'true' always;
 
         # 先定义变量
         set $backend "";
